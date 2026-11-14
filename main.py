@@ -33,7 +33,6 @@ Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyder
 Exclude: High-seniority roles requiring 5+ years of experience, non-technical BPO, and pure sales.
 """
 
-# 4 focused queries = ~120 requests/month (stays safely under your 200/month RapidAPI limit)
 SEARCH_QUERIES = [
     "QA Tester in India",
     "Application Support Engineer in India",
@@ -47,7 +46,8 @@ def fetch_jobs():
     seen_ids = set()
 
     if rapidapi_key:
-        url = "https://jsearch.p.rapidapi.com/search"
+        # Updated to JSearch's new /search-v2 endpoint
+        url = "https://jsearch.p.rapidapi.com/search-v2"
         headers = {
             "X-RapidAPI-Key": rapidapi_key,
             "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
@@ -67,7 +67,7 @@ def fetch_jobs():
                     jobs_data = response.json().get("data", [])
                     print(f"  Retrieved {len(jobs_data)} jobs for '{q}'")
                     for job in jobs_data:
-                        job_id = job.get("job_id")
+                        job_id = job.get("job_id") or job.get("id")
                         if job_id and job_id not in seen_ids:
                             seen_ids.add(job_id)
                             all_jobs.append(job)
@@ -103,6 +103,36 @@ def fetch_jobs():
 
     return all_jobs
 
+def generate_with_fallback(client, prompt):
+    """Tries gemini-3.8-flash first, then falls back to other available Flash models."""
+    candidate_models = [
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-2.0-flash"
+    ]
+    for model_name in candidate_models:
+        try:
+            print(f"Trying Gemini model: {model_name}...")
+            return client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
+        except Exception as e:
+            print(f"  Model {model_name} unavailable ({e}). Trying next...")
+
+    # Dynamic discovery fallback if predefined names change
+    for m in client.models.list():
+        name = getattr(m, "name", "")
+        if "gemini" in name and "flash" in name:
+            try:
+                print(f"Trying discovered model: {name}...")
+                return client.models.generate_content(model=name, contents=prompt)
+            except Exception:
+                continue
+
+    raise RuntimeError("Could not find an active Gemini model for this API key.")
+
 def evaluate_with_gemini(raw_jobs):
     gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
     if not gemini_key:
@@ -113,12 +143,12 @@ def evaluate_with_gemini(raw_jobs):
     compact_jobs = []
     for job in raw_jobs[:25]:
         compact_jobs.append({
-            "title": job.get("job_title"),
-            "company": job.get("employer_name"),
+            "title": job.get("job_title") or job.get("title"),
+            "company": job.get("employer_name") or job.get("company_name"),
             "location": f"{job.get('job_city', '')}, {job.get('job_country', '')}",
             "is_remote": job.get("job_is_remote"),
-            "description": (job.get("job_description") or "")[:600],
-            "apply_link": job.get("job_apply_link")
+            "description": (job.get("job_description") or job.get("description") or "")[:600],
+            "apply_link": job.get("job_apply_link") or job.get("apply_link") or job.get("url")
         })
 
     prompt = f"""
@@ -144,10 +174,7 @@ def evaluate_with_gemini(raw_jobs):
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    response = generate_with_fallback(client, prompt)
     
     html_output = response.text.strip()
     if html_output.startswith("```html"):
