@@ -40,13 +40,26 @@ SEARCH_QUERIES = [
     "Network Engineer in India"
 ]
 
+def extract_job_list(payload):
+    """Safely extracts the list of job dicts from JSearch v1 or v2 responses."""
+    raw_data = payload.get("data", [])
+    if isinstance(raw_data, list):
+        return [j for j in raw_data if isinstance(j, dict)]
+    if isinstance(raw_data, dict):
+        for key in ("jobs", "results", "data", "items"):
+            if isinstance(raw_data.get(key), list):
+                return [j for j in raw_data[key] if isinstance(j, dict)]
+        for val in raw_data.values():
+            if isinstance(val, list):
+                return [j for j in val if isinstance(j, dict)]
+    return []
+
 def fetch_jobs():
-    rapidapi_key = (os.getenv("RAPIDAPI_KEY") or "").strip()
+    rapidapi_key = "".join((os.getenv("RAPIDAPI_KEY") or "").split())
     all_jobs = []
     seen_ids = set()
 
     if rapidapi_key:
-        # Updated to JSearch's new /search-v2 endpoint
         url = "https://jsearch.p.rapidapi.com/search-v2"
         headers = {
             "X-RapidAPI-Key": rapidapi_key,
@@ -64,10 +77,10 @@ def fetch_jobs():
                 response = requests.get(url, headers=headers, params=params, timeout=20)
                 print(f"JSearch Query '{q}' -> HTTP Status: {response.status_code}")
                 if response.status_code == 200:
-                    jobs_data = response.json().get("data", [])
-                    print(f"  Retrieved {len(jobs_data)} jobs for '{q}'")
+                    jobs_data = extract_job_list(response.json())
+                    print(f"  Extracted {len(jobs_data)} valid jobs for '{q}'")
                     for job in jobs_data:
-                        job_id = job.get("job_id") or job.get("id")
+                        job_id = str(job.get("job_id") or job.get("id") or job.get("job_apply_link") or "")
                         if job_id and job_id not in seen_ids:
                             seen_ids.add(job_id)
                             all_jobs.append(job)
@@ -78,9 +91,9 @@ def fetch_jobs():
     else:
         print("Warning: RAPIDAPI_KEY secret is empty.")
 
-    # Automatic Free Backup Source if JSearch returns 0 jobs
+    # Free Backup Source if JSearch returns 0 jobs
     if not all_jobs:
-        print("JSearch returned 0 jobs. Fetching from free backup job board (Remotive API)...")
+        print("Fetching from free backup job board (Remotive API)...")
         for bq in ["QA", "Support", "Security"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
@@ -104,7 +117,6 @@ def fetch_jobs():
     return all_jobs
 
 def generate_with_fallback(client, prompt):
-    """Tries gemini-3.8-flash first, then falls back to other available Flash models."""
     candidate_models = [
         "gemini-3.8-flash",
         "gemini-3.6-flash",
@@ -121,20 +133,10 @@ def generate_with_fallback(client, prompt):
         except Exception as e:
             print(f"  Model {model_name} unavailable ({e}). Trying next...")
 
-    # Dynamic discovery fallback if predefined names change
-    for m in client.models.list():
-        name = getattr(m, "name", "")
-        if "gemini" in name and "flash" in name:
-            try:
-                print(f"Trying discovered model: {name}...")
-                return client.models.generate_content(model=name, contents=prompt)
-            except Exception:
-                continue
-
     raise RuntimeError("Could not find an active Gemini model for this API key.")
 
 def evaluate_with_gemini(raw_jobs):
-    gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    gemini_key = "".join((os.getenv("GEMINI_API_KEY") or "").split())
     if not gemini_key:
         raise ValueError("GEMINI_API_KEY secret is missing in GitHub Secrets!")
 
@@ -145,7 +147,7 @@ def evaluate_with_gemini(raw_jobs):
         compact_jobs.append({
             "title": job.get("job_title") or job.get("title"),
             "company": job.get("employer_name") or job.get("company_name"),
-            "location": f"{job.get('job_city', '')}, {job.get('job_country', '')}",
+            "location": f"{job.get('job_city') or job.get('location') or ''}, {job.get('job_country') or ''}",
             "is_remote": job.get("job_is_remote"),
             "description": (job.get("job_description") or job.get("description") or "")[:600],
             "apply_link": job.get("job_apply_link") or job.get("apply_link") or job.get("url")
@@ -184,13 +186,31 @@ def evaluate_with_gemini(raw_jobs):
 
     return html_output.strip()
 
+def publish_to_github_summary(html_content):
+    """Writes the HTML job digest directly to the GitHub Actions run summary screen."""
+    summary_file = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary_file:
+        try:
+            with open(summary_file, "a", encoding="utf-8") as f:
+                f.write("## Daily Curated IT Job Digest for Harshang Patel\n\n")
+                f.write(html_content + "\n")
+            print("Published job digest directly to GitHub Actions Summary page!")
+        except Exception as e:
+            print(f"Could not write GitHub summary: {e}")
+
 def send_email_digest(html_content):
-    sender = (os.getenv("EMAIL_SENDER") or "").strip()
-    password = (os.getenv("EMAIL_APP_PASSWORD") or "").replace(" ", "").strip()
-    receiver = (os.getenv("EMAIL_RECEIVER") or "").strip()
+    # Strip all spaces, tabs, and hidden newlines from credentials
+    sender = "".join((os.getenv("EMAIL_SENDER") or "").split())
+    password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
+    receiver = "".join((os.getenv("EMAIL_RECEIVER") or "").split())
+
+    print(f"SMTP Check -> Sender: {sender} | Receiver: {receiver} | App Password Length: {len(password)} chars")
 
     if not all([sender, password, receiver]):
         raise ValueError("Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets!")
+
+    if len(password) != 16:
+        print(f"WARNING: Google App Passwords are exactly 16 characters, but yours has {len(password)} characters.")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
@@ -198,10 +218,23 @@ def send_email_digest(html_content):
     msg["To"] = receiver
     msg.attach(MIMEText(html_content, "html"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(sender, password)
-        server.sendmail(sender, receiver, msg.as_string())
-    print(f"Digest email sent successfully to {receiver}!")
+    # Use Port 587 (STARTTLS) with a 30s timeout to prevent hanging on GitHub runners
+    try:
+        print("Connecting to smtp.gmail.com on port 587 (STARTTLS)...")
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(sender, password)
+            server.sendmail(sender, receiver, msg.as_string())
+        print(f"SUCCESS: Digest email sent to {receiver}!")
+    except Exception as e:
+        print(f"Port 587 failed ({e}). Trying fallback port 465 (SSL)...")
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
+            server.ehlo()
+            server.login(sender, password)
+            server.sendmail(sender, receiver, msg.as_string())
+        print(f"SUCCESS: Digest email sent to {receiver} via port 465!")
 
 def main():
     print("Step 1: Searching for recent IT, QA, CSV, and Support job postings...")
@@ -214,6 +247,9 @@ def main():
 
     print("Step 2: Scoring and filtering postings with Gemini...")
     digest_html = evaluate_with_gemini(jobs)
+
+    # Always publish the job cards to the GitHub Actions Summary screen first
+    publish_to_github_summary(digest_html)
 
     print("Step 3: Delivering your morning email alert...")
     send_email_digest(digest_html)
