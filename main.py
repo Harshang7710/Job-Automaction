@@ -8,7 +8,6 @@ import requests
 
 load_dotenv()
 
-# Profile tailored to your resume and updated target email
 USER_PROFILE = """
 Candidate: Harshang Patel (patidar4774@gmail.com)
 Education: Bachelor of Engineering (Information Technology)
@@ -28,59 +27,88 @@ Target Roles to Hunt:
 1. QA Test Engineer / Manual Tester / Software Test Engineer / SDET (Junior)
 2. QA IT Executive / CSV (Computer System Validation) / IT Compliance in Pharma or Healthcare
 3. Application Support / IT Support / Technical Support Engineer
-4. Cybersecurity Analyst (Entry-level / L1) / Information Security Associate
-5. Network Engineer / Network Support / Systems Associate
+4. Cybersecurity Analyst (Entry-level / L1) / Network Support Engineer
 
-Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide / Relocation-friendly opportunities.
+Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide opportunities.
 Exclude: High-seniority roles requiring 5+ years of experience, non-technical BPO, and pure sales.
 """
 
+# 4 focused queries = ~120 requests/month (stays safely under your 200/month RapidAPI limit)
 SEARCH_QUERIES = [
-    "QA Tester OR Test Engineer India",
-    "Application Support Engineer OR IT Support India",
-    "Network Engineer OR Junior Cyber Security India",
-    "Computer System Validation Pharma QA",
-    "Junior QA Engineer Remote Worldwide"
+    "QA Tester in India",
+    "Application Support Engineer in India",
+    "Computer System Validation QA in India",
+    "Network Engineer in India"
 ]
 
 def fetch_jobs():
-    rapidapi_key = os.getenv("RAPIDAPI_KEY")
-    if not rapidapi_key:
-        print("Error: RAPIDAPI_KEY is not set.")
-        return []
-
-    url = "https://jsearch.p.rapidapi.com/search"
-    headers = {
-        "X-RapidAPI-Key": rapidapi_key,
-        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
-    }
-
+    rapidapi_key = (os.getenv("RAPIDAPI_KEY") or "").strip()
     all_jobs = []
     seen_ids = set()
 
-    for q in SEARCH_QUERIES:
-        params = {
-            "query": q,
-            "page": "1",
-            "num_pages": "1",
-            "date_posted": "today"
+    if rapidapi_key:
+        url = "https://jsearch.p.rapidapi.com/search"
+        headers = {
+            "X-RapidAPI-Key": rapidapi_key,
+            "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
         }
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=15)
-            if response.status_code == 200:
-                data = response.json().get("data", [])
-                for job in data:
-                    job_id = job.get("job_id")
-                    if job_id and job_id not in seen_ids:
-                        seen_ids.add(job_id)
-                        all_jobs.append(job)
-        except Exception as e:
-            print(f"Error fetching query '{q}': {e}")
+
+        for q in SEARCH_QUERIES:
+            params = {
+                "query": q,
+                "page": "1",
+                "num_pages": "1",
+                "date_posted": "3days"
+            }
+            try:
+                response = requests.get(url, headers=headers, params=params, timeout=20)
+                print(f"JSearch Query '{q}' -> HTTP Status: {response.status_code}")
+                if response.status_code == 200:
+                    jobs_data = response.json().get("data", [])
+                    print(f"  Retrieved {len(jobs_data)} jobs for '{q}'")
+                    for job in jobs_data:
+                        job_id = job.get("job_id")
+                        if job_id and job_id not in seen_ids:
+                            seen_ids.add(job_id)
+                            all_jobs.append(job)
+                else:
+                    print(f"  API Warning: {response.text[:250]}")
+            except Exception as e:
+                print(f"Error fetching query '{q}': {e}")
+    else:
+        print("Warning: RAPIDAPI_KEY secret is empty.")
+
+    # Automatic Free Backup Source if JSearch returns 0 jobs
+    if not all_jobs:
+        print("JSearch returned 0 jobs. Fetching from free backup job board (Remotive API)...")
+        for bq in ["QA", "Support", "Security"]:
+            try:
+                resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
+                if resp.status_code == 200:
+                    for item in resp.json().get("jobs", []):
+                        jid = str(item.get("id"))
+                        if jid not in seen_ids:
+                            seen_ids.add(jid)
+                            all_jobs.append({
+                                "job_title": item.get("title"),
+                                "employer_name": item.get("company_name"),
+                                "job_city": item.get("candidate_required_location", "Remote"),
+                                "job_country": "Global / Remote",
+                                "job_is_remote": True,
+                                "job_description": item.get("description", ""),
+                                "job_apply_link": item.get("url")
+                            })
+            except Exception as e:
+                print(f"Backup fetch error for '{bq}': {e}")
 
     return all_jobs
 
 def evaluate_with_gemini(raw_jobs):
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    if not gemini_key:
+        raise ValueError("GEMINI_API_KEY secret is missing in GitHub Secrets!")
+
+    client = genai.Client(api_key=gemini_key)
 
     compact_jobs = []
     for job in raw_jobs[:25]:
@@ -99,21 +127,19 @@ def evaluate_with_gemini(raw_jobs):
     Here is Harshang's technical background, resume details, and target preferences:
     {USER_PROFILE}
 
-    Here are the raw IT job postings retrieved from the last 24 hours:
+    Here are the raw IT job postings retrieved today:
     {compact_jobs}
 
     Tasks:
-    1. Evaluate each job carefully against Harshang's qualifications (QA manual/functional/UAT, Pharma validation/GAMP 5, API/Postman, Application/IT support, entry-level network & cyber security).
-    2. Discard any roles requiring 5+ years experience, non-technical positions, or completely unrelated stacks.
-    3. Select the best 5 to 10 matching openings.
-    4. Format the final output as a clean, responsive HTML email digest using inline CSS.
+    1. Evaluate each job against Harshang's qualifications (QA manual/functional/UAT, Pharma validation/GAMP 5, API/Postman, Application/IT support, entry-level network & cyber security).
+    2. Select the best 5 to 10 matching openings.
+    3. Format the final output as a clean, responsive HTML email digest using inline CSS.
        - Use a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
        - For each job card include:
          * Job Title & Company Name
          * Location & Work Mode (Highlight if Remote or Global)
          * Match Score & 1-sentence explanation of why it fits Harshang's CV
          * A clickable "Apply Now" button styled as an HTML link.
-    5. If zero jobs qualify, create a brief, polite HTML card stating no suitable jobs met the threshold today.
 
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
@@ -132,13 +158,12 @@ def evaluate_with_gemini(raw_jobs):
     return html_output.strip()
 
 def send_email_digest(html_content):
-    sender = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_APP_PASSWORD")
-    receiver = os.getenv("EMAIL_RECEIVER")
+    sender = (os.getenv("EMAIL_SENDER") or "").strip()
+    password = (os.getenv("EMAIL_APP_PASSWORD") or "").replace(" ", "").strip()
+    receiver = (os.getenv("EMAIL_RECEIVER") or "").strip()
 
     if not all([sender, password, receiver]):
-        print("Missing email configuration in environment variables.")
-        return
+        raise ValueError("Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets!")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
@@ -157,7 +182,7 @@ def main():
     print(f"Found {len(jobs)} unique raw postings.")
 
     if not jobs:
-        print("No job postings found today. Skipping email.")
+        print("No job postings found from primary or backup sources.")
         return
 
     print("Step 2: Scoring and filtering postings with Gemini...")
