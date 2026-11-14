@@ -185,8 +185,13 @@ def evaluate_with_gemini(raw_jobs):
             "company": job.get("employer_name") or job.get("company_name"),
             "location": f"{job.get('job_city') or job.get('location') or ''}, {job.get('job_country') or ''}",
             "is_remote": job.get("job_is_remote"),
-            "description": (job.get("job_description") or job.get("description") or "")[:600],
-            "apply_link": job.get("job_apply_link") or job.get("apply_link") or job.get("url")
+            "description": (job.get("job_description") or job.get("description") or "")[:900],
+            "source_platform": job.get("job_publisher") or job.get("publisher") or job.get("source") or "JSearch listing (publisher not supplied)",
+            "apply_link": job.get("job_apply_link") or job.get("apply_link") or job.get("url"),
+            "apply_link_is_direct": job.get("job_apply_is_direct"),
+            "company_career_page": job.get("employer_website") or job.get("company_website") or job.get("career_page_url"),
+            "public_hr_email": job.get("hr_email") or job.get("recruiter_email") or job.get("contact_email"),
+            "public_hr_phone": job.get("hr_phone") or job.get("recruiter_phone") or job.get("contact_phone")
         })
 
     prompt = f"""
@@ -207,7 +212,16 @@ def evaluate_with_gemini(raw_jobs):
          * Job Title & Company Name
          * Location & Work Mode (Highlight if Remote or Global)
          * Match Score & 1-sentence explanation of why it fits Harshang's CV
-         * A clickable "Apply Now" button styled as an HTML link.
+         * A clickable application link. If apply_link_is_direct is true, label it "Direct Apply".
+           Otherwise label it "View Job / Apply" and do not claim it is the employer's direct career page.
+         * The source platform/publisher (for example, LinkedIn, Shine, Glassdoor, or the publisher supplied by JSearch).
+         * If a verified company_career_page URL is supplied, include a separate "Company Careers Page" link.
+         * If public_hr_email or public_hr_phone is supplied in the source data, show it as "Public HR Contact".
+           If no verified contact is supplied, write "Public HR contact not available".
+       - Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data.
+       - NEVER invent or guess a company career URL, HR email, recruiter identity, or phone number.
+       - Do not present a job-board redirect as a direct company application link.
+       - Keep all existing email styling, candidate targeting, match scoring, and filtering behavior.
 
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
