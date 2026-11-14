@@ -239,6 +239,8 @@ def send_email_digest(html_content):
     sender = "".join((os.getenv("EMAIL_SENDER") or "").split())
     password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
     receiver = "".join((os.getenv("EMAIL_RECEIVER") or "").split())
+    # Additional recipient receives the digest as CC. Override with EMAIL_CC if needed.
+    cc = "".join((os.getenv("EMAIL_CC") or "harshangpatel@alembic.co.in").split())
 
     if not all([sender, password, receiver]):
         raise ValueError(
@@ -254,7 +256,12 @@ def send_email_digest(html_content):
     msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
     msg["From"] = sender
     msg["To"] = receiver
+    if cc:
+        msg["Cc"] = cc
     msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    # Include CC recipients in the SMTP envelope as well as the message header.
+    recipients = [receiver] + ([cc] if cc and cc.lower() != receiver.lower() else [])
 
     failures = []
 
@@ -266,7 +273,7 @@ def send_email_digest(html_content):
             server.starttls()
             server.ehlo()
             server.login(sender, password)
-            server.sendmail(sender, [receiver], msg.as_string())
+            server.sendmail(sender, recipients, msg.as_string())
         print("SUCCESS: Digest email sent using Gmail port 587.")
         return
     except (OSError, smtplib.SMTPException) as exc:
@@ -279,7 +286,7 @@ def send_email_digest(html_content):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.ehlo()
             server.login(sender, password)
-            server.sendmail(sender, [receiver], msg.as_string())
+            server.sendmail(sender, recipients, msg.as_string())
         print("SUCCESS: Digest email sent using Gmail port 465.")
         return
     except (OSError, smtplib.SMTPException) as exc:
