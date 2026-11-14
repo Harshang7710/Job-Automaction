@@ -8,9 +8,9 @@ import requests
 
 load_dotenv()
 
-# Profile tailored to your resume
+# Profile tailored to your resume and updated target email
 USER_PROFILE = """
-Candidate: Harshang Patel (harshangpatel4774@gmail.com)
+Candidate: Harshang Patel (patidar4774@gmail.com)
 Education: Bachelor of Engineering (Information Technology)
 Total Experience: Entry-level to ~2+ years (Junior to Associate level)
 
