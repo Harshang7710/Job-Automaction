@@ -41,18 +41,54 @@ SEARCH_QUERIES = [
 ]
 
 def extract_job_list(payload):
-    """Safely extracts the list of job dicts from JSearch v1 or v2 responses."""
-    raw_data = payload.get("data", [])
-    if isinstance(raw_data, list):
-        return [j for j in raw_data if isinstance(j, dict)]
-    if isinstance(raw_data, dict):
-        for key in ("jobs", "results", "data", "items"):
-            if isinstance(raw_data.get(key), list):
-                return [j for j in raw_data[key] if isinstance(j, dict)]
-        for val in raw_data.values():
-            if isinstance(val, list):
-                return [j for j in val if isinstance(j, dict)]
-    return []
+    """Extract job dictionaries safely from JSearch response variants."""
+    import json
+
+    job_markers = {
+        "job_id", "job_title", "employer_name", "job_apply_link",
+        "job_description", "job_publisher"
+    }
+    jobs = []
+    visited = set()
+
+    def walk(value):
+        if isinstance(value, str):
+            # Some wrappers return JSON-encoded objects as strings.
+            candidate = value.strip()
+            if candidate.startswith(("{", "[")):
+                try:
+                    walk(json.loads(candidate))
+                except (json.JSONDecodeError, RecursionError):
+                    pass
+            return
+
+        if isinstance(value, list):
+            for item in value:
+                walk(item)
+            return
+
+        if not isinstance(value, dict):
+            return
+
+        if job_markers.intersection(value.keys()):
+            marker = value.get("job_id") or value.get("job_apply_link") or repr(sorted(value.items())[:4])
+            marker = str(marker)
+            if marker not in visited:
+                visited.add(marker)
+                jobs.append(value)
+            return
+
+        # Search common response containers first, then other nested values.
+        preferred = ("data", "jobs", "results", "items", "search_results")
+        for key in preferred:
+            if key in value:
+                walk(value[key])
+        for key, nested in value.items():
+            if key not in preferred and isinstance(nested, (dict, list, str)):
+                walk(nested)
+
+    walk(payload)
+    return jobs
 
 def fetch_jobs():
     rapidapi_key = "".join((os.getenv("RAPIDAPI_KEY") or "").split())
@@ -199,42 +235,63 @@ def publish_to_github_summary(html_content):
             print(f"Could not write GitHub summary: {e}")
 
 def send_email_digest(html_content):
-    # Strip all spaces, tabs, and hidden newlines from credentials
+    """Send the digest through Gmail, trying STARTTLS then implicit SSL."""
     sender = "".join((os.getenv("EMAIL_SENDER") or "").split())
     password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
     receiver = "".join((os.getenv("EMAIL_RECEIVER") or "").split())
 
-    print(f"SMTP Check -> Sender: {sender} | Receiver: {receiver} | App Password Length: {len(password)} chars")
-
     if not all([sender, password, receiver]):
-        raise ValueError("Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets!")
-
+        raise ValueError(
+            "Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets."
+        )
     if len(password) != 16:
-        print(f"WARNING: Google App Passwords are exactly 16 characters, but yours has {len(password)} characters.")
+        raise ValueError(
+            "EMAIL_APP_PASSWORD should be the 16-character Google App Password "
+            "(remove spaces; do not use your normal Gmail password)."
+        )
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
     msg["From"] = sender
     msg["To"] = receiver
-    msg.attach(MIMEText(html_content, "html"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
 
-    # Use Port 587 (STARTTLS) with a 30s timeout to prevent hanging on GitHub runners
+    failures = []
+
+    # Port 587: SMTP followed by STARTTLS.
     try:
-        print("Connecting to smtp.gmail.com on port 587 (STARTTLS)...")
+        print("Attempting Gmail SMTP on port 587 (STARTTLS)...")
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(sender, password)
-            server.sendmail(sender, receiver, msg.as_string())
-        print(f"SUCCESS: Digest email sent to {receiver}!")
-    except Exception as e:
-        print(f"Port 587 failed ({e}). Trying fallback port 465 (SSL)...")
+            server.sendmail(sender, [receiver], msg.as_string())
+        print("SUCCESS: Digest email sent using Gmail port 587.")
+        return
+    except (OSError, smtplib.SMTPException) as exc:
+        failures.append(f"Port 587 STARTTLS: {type(exc).__name__}: {exc}")
+        print(f"Port 587 attempt failed: {type(exc).__name__}: {exc}")
+
+    # Port 465: implicit TLS fallback.
+    try:
+        print("Attempting Gmail SMTP on port 465 (SSL)...")
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.ehlo()
             server.login(sender, password)
-            server.sendmail(sender, receiver, msg.as_string())
-        print(f"SUCCESS: Digest email sent to {receiver} via port 465!")
+            server.sendmail(sender, [receiver], msg.as_string())
+        print("SUCCESS: Digest email sent using Gmail port 465.")
+        return
+    except (OSError, smtplib.SMTPException) as exc:
+        failures.append(f"Port 465 SSL: {type(exc).__name__}: {exc}")
+
+    raise RuntimeError(
+        "Gmail could not send the digest using either SMTP connection. "
+        "Check that EMAIL_SENDER is the Gmail account that created the App Password, "
+        "2-Step Verification is enabled, and EMAIL_APP_PASSWORD is a current "
+        "16-character Google App Password. Do not use the normal Gmail password. "
+        + " | ".join(failures)
+    )
 
 def main():
     print("Step 1: Searching for recent IT, QA, CSV, and Support job postings...")
