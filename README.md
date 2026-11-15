@@ -28,9 +28,19 @@ Add these under **Repository → Settings → Secrets and variables → Actions 
 - `LINKEDIN_ALERT_EMAIL`: the Gmail inbox address that receives LinkedIn alerts.
 - `LINKEDIN_ALERT_APP_PASSWORD`: a Google App Password for that Gmail inbox (not your normal Gmail password).
 
-If the LinkedIn alert inbox is the same Gmail account used by `EMAIL_RECEIVER` and its App Password is already in `EMAIL_APP_PASSWORD`, the two new secrets can be omitted. The importer checks messages from the previous 3 days and only imports links pointing to LinkedIn job pages. It accesses the inbox read-only. Imported job links are cached between workflow runs to avoid repeating the same LinkedIn job in multiple digests.
+If `LINKEDIN_ALERT_EMAIL` is omitted, the importer uses `EMAIL_RECEIVER`. `LINKEDIN_ALERT_APP_PASSWORD` may be omitted only when that alert inbox is also the same Gmail account as `EMAIL_SENDER`, because `EMAIL_APP_PASSWORD` authenticates the sender account. Do not assume the sender's App Password can access a different receiver inbox. The importer checks messages from the previous 3 days, reads the inbox in read-only mode, and caches imported links between workflow runs to reduce duplicate entries.
 
 **Never add your LinkedIn password, Gmail password, or app password to source code or send it in chat.** Store credentials only in GitHub Actions Secrets.
+
+## Run tests locally
+
+After installing dependencies, run the offline test suite with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The **Job Hunter QA** GitHub Actions workflow runs these tests on relevant pushes and pull requests. The tests mock external services and do not send real emails or consume job-search API quotas.
 
 ## Existing required secrets
 
