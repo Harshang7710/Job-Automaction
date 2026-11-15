@@ -1,7 +1,14 @@
 import os
+import re
+import imaplib
 import smtplib
+from datetime import datetime, timedelta
+from email import message_from_bytes
+from email.header import decode_header, make_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from html import unescape
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from google import genai
 import requests
@@ -101,6 +108,127 @@ def extract_job_list(payload):
     walk(payload)
     return jobs
 
+
+def _decode_email_header(value):
+    """Decode an RFC 2047 email header safely."""
+    try:
+        return str(make_header(decode_header(value or "")))
+    except Exception:
+        return value or ""
+
+def _get_email_bodies(message):
+    """Extract decoded plain-text and HTML bodies from an email."""
+    plain_parts, html_parts = [], []
+    for part in message.walk():
+        if part.get_content_maintype() == "multipart" or part.get_content_disposition() == "attachment":
+            continue
+        content_type = part.get_content_type()
+        if content_type not in ("text/plain", "text/html"):
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+        charset = part.get_content_charset() or "utf-8"
+        try:
+            decoded = payload.decode(charset, errors="replace")
+        except LookupError:
+            decoded = payload.decode("utf-8", errors="replace")
+        (html_parts if content_type == "text/html" else plain_parts).append(decoded)
+    return "\n".join(plain_parts), "\n".join(html_parts)
+
+def fetch_linkedin_alert_jobs():
+    """
+    Import job links from LinkedIn's own job-alert emails using Gmail IMAP.
+    This does not log in to LinkedIn or scrape LinkedIn pages.
+    """
+    alert_email = (os.getenv("LINKEDIN_ALERT_EMAIL") or os.getenv("EMAIL_RECEIVER") or "").strip()
+    app_password = "".join((
+        os.getenv("LINKEDIN_ALERT_APP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or ""
+    ).split())
+    if not alert_email or not app_password:
+        print("LinkedIn alert import skipped: Gmail inbox credentials are not configured.")
+        return []
+
+    jobs, seen_links = [], set()
+    since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
+    try:
+        mailbox = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=30)
+        try:
+            mailbox.login(alert_email, app_password)
+            status, _ = mailbox.select("INBOX", readonly=True)
+            if status != "OK":
+                print("LinkedIn alert import skipped: could not open Gmail INBOX.")
+                return []
+
+            status, data = mailbox.search(None, "SINCE", since_date)
+            if status != "OK" or not data or not data[0]:
+                print("LinkedIn alert import: no recent messages found.")
+                return []
+
+            # Inspect only the latest 100 messages from the previous 3 days.
+            anchor_re = re.compile(
+                r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a\s*>',
+                re.IGNORECASE | re.DOTALL
+            )
+            for message_id in data[0].split()[-100:]:
+                status, parts = mailbox.fetch(message_id, "(RFC822)")
+                raw = next((item[1] for item in parts if isinstance(item, tuple)), None) if status == "OK" else None
+                if not raw:
+                    continue
+
+                msg = message_from_bytes(raw)
+                sender = _decode_email_header(msg.get("From", "")).lower()
+                subject = _decode_email_header(msg.get("Subject", "")).strip()
+                plain, html = _get_email_bodies(msg)
+                plain_clean = re.sub(r"\s+", " ", unescape(plain or re.sub(r"<[^>]+>", " ", html))).strip()
+
+                if "linkedin" not in sender and "linkedin" not in subject.lower():
+                    continue
+                if "job" not in subject.lower() and "job" not in plain_clean.lower():
+                    continue
+
+                for match in anchor_re.finditer(html):
+                    link = unescape(match.group(1)).replace("&amp;", "&").strip()
+                    parsed = urlparse(link)
+                    host, path = (parsed.netloc or "").lower(), (parsed.path or "").lower()
+                    linkedin_host = host == "linkedin.com" or host.endswith(".linkedin.com")
+                    job_url = "/jobs/view/" in path or "/comm/jobs/view/" in path or "currentjobid=" in link.lower()
+                    if not linkedin_host or not job_url or link in seen_links:
+                        continue
+
+                    title = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", match.group(2)))).strip()
+                    if not title or title.lower() in {"view job", "view", "apply", "see job", "view jobs"}:
+                        title = subject or "LinkedIn job alert"
+
+                    lo, hi = max(0, match.start() - 900), min(len(html), match.end() + 1400)
+                    context = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html[lo:hi]))).strip()
+                    if not context:
+                        context = plain_clean[:1800]
+
+                    seen_links.add(link)
+                    jobs.append({
+                        "job_id": "linkedin-alert:" + link,
+                        "job_title": title,
+                        "employer_name": "",
+                        "job_city": "",
+                        "job_country": "",
+                        "job_is_remote": None,
+                        "job_description": context[:2500],
+                        "job_publisher": "LinkedIn Job Alert Email",
+                        "job_apply_link": link,
+                        "job_apply_is_direct": False
+                    })
+        finally:
+            try:
+                mailbox.logout()
+            except Exception:
+                pass
+    except Exception as exc:
+        print(f"LinkedIn alert import warning: {type(exc).__name__}: {exc}")
+
+    print(f"Imported {len(jobs)} job links from LinkedIn alert emails.")
+    return jobs
+
 def fetch_jobs():
     rapidapi_key = "".join((os.getenv("RAPIDAPI_KEY") or "").split())
     all_jobs = []
@@ -155,6 +283,13 @@ def fetch_jobs():
                             })
             except Exception as e:
                 print(f"Backup fetch error for '{bq}': {e}")
+
+    # Also import job links from LinkedIn's own email alerts.
+    for job in fetch_linkedin_alert_jobs():
+        job_id = str(job.get("job_id") or job.get("job_apply_link") or "")
+        if job_id and job_id not in seen_ids:
+            seen_ids.add(job_id)
+            all_jobs.append(job)
 
     return all_jobs
 
