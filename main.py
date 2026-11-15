@@ -23,24 +23,17 @@ Core & Emerging Skills:
 - IT, Systems & Networking: TCP/IP, OSI model, Subnetting, DNS/DHCP, Linux/Windows Server basics, Network Security (Firewalls, VPN)
 - Security Tools: Wireshark, Burp Suite (Foundational)
 
-Cybersecurity roles are the primary career goal. Target entry-level roles:
-- SOC Analyst L1 / Tier 1, Security Operations Analyst, Junior Security Analyst, security monitoring and incident triage
-- Junior GRC / Information Security Compliance / IT Risk Analyst / Security Audit Associate
-- Entry-level Vulnerability Management Analyst / Vulnerability Assessment Associate
-- Security Operations or junior network-security roles
-- Red Team / penetration testing only for genuine trainee, intern, graduate, or junior openings that do not require substantial prior offensive-security experience
-
-Other relevant roles (secondary priority):
-- QA Test Engineer / Manual Tester / Software Test Engineer / SDET (Junior)
-- QA IT Executive / CSV (Computer System Validation) / IT Compliance in Pharma or Healthcare
-- Application Support / IT Support / Technical Support Engineer / Network Support Engineer
+Target Roles (consider all relevant categories):
+- Cybersecurity: SOC Analyst L1 / Tier 1, Security Operations Analyst, Junior Security Analyst, Junior GRC / Information Security Compliance / IT Risk / Security Audit Associate, Entry-level Vulnerability Management / Assessment Analyst, junior network security; red team / penetration testing only for genuine trainee, intern, graduate, or junior roles that do not require substantial prior offensive-security experience
+- QA & Testing: QA Test Engineer, Manual Tester, Software Test Engineer, Junior SDET, UAT / functional / regression tester
+- Validation & Compliance: QA IT Executive, Computer System Validation (CSV), IT Compliance, pharma / healthcare validation
+- IT & Support: Application Support, IT Support, Technical Support Engineer, Network Support Engineer
 
 Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide opportunities.
-Experience fit: Prefer 0-2 years, trainee, graduate, associate, junior, and L1 roles. Consider up to 3 years only when the role is clearly junior and the requirements fit the profile. Exclude senior, lead, manager, architect, and other advanced roles, as well as roles requiring 4+ years of experience, non-technical BPO, or pure sales.
+Experience fit: Prefer 0-2 years, trainee, graduate, associate, junior, and L1 roles. Consider up to 3 years only when the role is clearly junior and requirements fit the profile. Exclude senior, lead, manager, architect, and other advanced roles, as well as roles requiring 4+ years of experience, non-technical BPO, or pure sales.
 Do not claim certifications, tools, hands-on security experience, or qualifications not listed above.
 """
 
-# Cybersecurity searches come first so they are represented in the digest when results are capped.
 SEARCH_QUERIES = [
     "entry level SOC Analyst L1 Tier 1 India",
     "junior cybersecurity analyst security operations India 0-2 years",
@@ -51,9 +44,13 @@ SEARCH_QUERIES = [
     "trainee junior penetration tester red team India entry level",
     "entry level network security analyst India",
     "QA Tester in India",
-    "Application Support Engineer in India",
-    "Computer System Validation QA in India",
-    "Network Engineer in India"
+    "Manual QA Tester junior India",
+    "Application Support Engineer entry level India",
+    "IT Support Technical Support Engineer junior India",
+    "Computer System Validation QA CSV India",
+    "Pharma IT compliance validation associate India",
+    "Network Support Engineer junior India",
+    "Junior Network Engineer India"
 ]
 
 def extract_job_list(payload):
@@ -69,7 +66,6 @@ def extract_job_list(payload):
 
     def walk(value):
         if isinstance(value, str):
-            # Some wrappers return JSON-encoded objects as strings.
             candidate = value.strip()
             if candidate.startswith(("{", "[")):
                 try:
@@ -94,7 +90,6 @@ def extract_job_list(payload):
                 jobs.append(value)
             return
 
-        # Search common response containers first, then other nested values.
         preferred = ("data", "jobs", "results", "items", "search_results")
         for key in preferred:
             if key in value:
@@ -119,12 +114,7 @@ def fetch_jobs():
         }
 
         for q in SEARCH_QUERIES:
-            params = {
-                "query": q,
-                "page": "1",
-                "num_pages": "1",
-                "date_posted": "3days"
-            }
+            params = {"query": q, "page": "1", "num_pages": "1", "date_posted": "3days"}
             try:
                 response = requests.get(url, headers=headers, params=params, timeout=20)
                 print(f"JSearch Query '{q}' -> HTTP Status: {response.status_code}")
@@ -143,10 +133,10 @@ def fetch_jobs():
     else:
         print("Warning: RAPIDAPI_KEY secret is empty.")
 
-    # Free Backup Source if JSearch returns 0 jobs
+    # Free backup source if JSearch returns no jobs.
     if not all_jobs:
         print("Fetching from free backup job board (Remotive API)...")
-        for bq in ["SOC analyst", "security operations", "GRC", "vulnerability analyst", "penetration testing", "red team", "QA", "Support", "Security"]:
+        for bq in ["SOC analyst", "security operations", "GRC", "vulnerability analyst", "penetration testing", "red team", "QA", "IT support", "validation", "network support"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
                 if resp.status_code == 200:
@@ -178,10 +168,7 @@ def generate_with_fallback(client, prompt):
     for model_name in candidate_models:
         try:
             print(f"Trying Gemini model: {model_name}...")
-            return client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
+            return client.models.generate_content(model=model_name, contents=prompt)
         except Exception as e:
             print(f"  Model {model_name} unavailable ({e}). Trying next...")
 
@@ -193,9 +180,8 @@ def evaluate_with_gemini(raw_jobs):
         raise ValueError("GEMINI_API_KEY secret is missing in GitHub Secrets!")
 
     client = genai.Client(api_key=gemini_key)
-
     compact_jobs = []
-    for job in raw_jobs[:25]:
+    for job in raw_jobs[:50]:
         compact_jobs.append({
             "title": job.get("job_title") or job.get("title"),
             "company": job.get("employer_name") or job.get("company_name"),
@@ -213,44 +199,35 @@ def evaluate_with_gemini(raw_jobs):
     prompt = f"""
     You are Harshang Patel's dedicated AI Career Agent.
 
-    Candidate background and target roles:
+    Candidate background and preferences:
     {USER_PROFILE}
 
-    Raw job postings retrieved today:
+    Job postings retrieved today:
     {compact_jobs}
 
     Screening and ranking rules:
-    1. Cybersecurity is the candidate's primary goal. Prioritize genuine entry-level cybersecurity openings, especially SOC Analyst L1/Tier 1, Security Operations Analyst, Junior Security Analyst, junior GRC/compliance/risk/audit, and junior vulnerability-management roles. QA, CSV, IT support, and network support are secondary alternatives, not substitutes when suitable entry-level cybersecurity jobs are available.
-    2. Accept roles described as intern, trainee, graduate, junior, associate, L1/Tier 1, or entry-level. Prefer 0-2 years of required experience. A clearly junior role asking for up to 3 years can still be considered if the listed duties and requirements fit the candidate. Reject postings requiring 4+ years or describing senior, lead, manager, architect, or advanced responsibilities.
-    3. Treat red-team and penetration-testing roles especially strictly: include only genuinely entry-level internships, trainee, graduate, or junior openings. Exclude roles requiring substantial professional offensive-security experience, advanced certifications, or skills absent from the candidate profile. Do not invent qualifications or imply that foundational exposure equals professional experience.
-    4. Review the actual requirements and responsibilities, not just keywords in the title. Do not recommend a role if its experience, certification, or technical requirements clearly exceed the profile. Be honest about gaps and score match accordingly. Do not invent candidate experience, certifications, tools, or skills.
-    5. Select the best 5 to 10 suitable jobs. If fewer than 5 genuinely suitable jobs exist, show only the suitable results rather than padding with poor matches. Rank strong entry-level cybersecurity matches first.
+    1. Search and recommend jobs across ALL suitable categories: cybersecurity, IT, QA/testing, application/technical support, network support, and validation/compliance (especially CSV and pharma/healthcare IT). Cybersecurity is important, but it is NOT the only target and must not automatically outrank a better-fitting IT, QA, support, or validation role. Evaluate the full range and rank by overall fit and realistic entry-level suitability.
+    2. Prefer trainee, graduate, junior, associate, and L1/Tier 1 roles, typically requiring 0-2 years. A clearly junior role asking up to 3 years may be considered if duties and requirements fit the candidate. Exclude roles requiring 4+ years or describing senior, lead, manager, architect, or advanced responsibilities.
+    3. Include red-team/penetration-testing roles only if genuinely entry-level, trainee, intern, graduate, or junior; exclude jobs requiring substantial professional offensive-security experience or skills/certifications absent from the profile.
+    4. Review the actual requirements and responsibilities, not just titles or keywords. Be honest about experience or qualification gaps; do not claim certifications, tools, or hands-on experience not listed in the candidate profile.
+    5. Select the best 5 to 10 suitable jobs across the categories. If fewer than 5 genuinely suitable jobs exist, show only those suitable results rather than padding with poor matches. Aim for a useful mix of relevant categories when the postings support it.
     6. Format the output as a clean, responsive HTML email digest using inline CSS and a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
-       For each job card include:
-         * Job Title & Company Name
-         * Location & Work Mode (highlight Remote or Global)
-         * Match Score & one-sentence explanation grounded in the posting and candidate profile
-         * A clickable application link. If apply_link_is_direct is true, label it "Direct Apply"; otherwise label it "View Job / Apply" and do not claim it is the employer's direct career page.
-         * Source platform/publisher, using only what is supplied in the job data
-         * A separate "Company Careers Page" link only if a company_career_page URL is supplied
-         * "Public HR Contact" only when a public HR email or phone is supplied; otherwise write "Public HR contact not available"
-       Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data. NEVER invent or guess a company career URL, HR contact, recruiter identity, or phone number. Do not present a job-board redirect as a direct company application link. Keep the existing email styling and candidate targeting.
+       For each job card include job title and company, location and work mode (highlight Remote/Global), a match score and one-sentence explanation grounded in the posting/profile, and a clickable application link. Label it "Direct Apply" only when apply_link_is_direct is true; otherwise say "View Job / Apply". Include source publisher only when supplied, a separate company-careers link only when a URL is supplied, and public HR contact only when supplied (otherwise say "Public HR contact not available").
+    Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data. Never invent or guess career URLs, contacts, recruiter identities, or phone numbers. Do not present a job-board redirect as a direct company application link. Keep existing styling and candidate targeting.
 
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
 
     response = generate_with_fallback(client, prompt)
-    
     html_output = response.text.strip()
     if html_output.startswith("```html"):
         html_output = html_output[7:]
     if html_output.endswith("```"):
         html_output = html_output[:-3]
-
     return html_output.strip()
 
 def publish_to_github_summary(html_content):
-    """Writes the HTML job digest directly to the GitHub Actions run summary screen."""
+    """Writes the HTML job digest to the GitHub Actions run summary."""
     summary_file = os.getenv("GITHUB_STEP_SUMMARY")
     if summary_file:
         try:
@@ -266,33 +243,23 @@ def send_email_digest(html_content):
     sender = "".join((os.getenv("EMAIL_SENDER") or "").split())
     password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
     receiver = "".join((os.getenv("EMAIL_RECEIVER") or "").split())
-    # Additional recipient receives the digest as CC. Override with EMAIL_CC if needed.
     cc = "".join((os.getenv("EMAIL_CC") or "harshangpatel@alembic.co.in").split())
 
     if not all([sender, password, receiver]):
-        raise ValueError(
-            "Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets."
-        )
+        raise ValueError("Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets.")
     if len(password) != 16:
-        raise ValueError(
-            "EMAIL_APP_PASSWORD should be the 16-character Google App Password "
-            "(remove spaces; do not use your normal Gmail password)."
-        )
+        raise ValueError("EMAIL_APP_PASSWORD should be the 16-character Google App Password (remove spaces; do not use your normal Gmail password).")
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
+    msg["Subject"] = "Morning Job Digest | Curated by Gemini"
     msg["From"] = sender
     msg["To"] = receiver
     if cc:
         msg["Cc"] = cc
     msg.attach(MIMEText(html_content, "html", "utf-8"))
-
-    # Include CC recipients in the SMTP envelope as well as the message header.
     recipients = [receiver] + ([cc] if cc and cc.lower() != receiver.lower() else [])
 
     failures = []
-
-    # Port 587: SMTP followed by STARTTLS.
     try:
         print("Attempting Gmail SMTP on port 587 (STARTTLS)...")
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
@@ -307,7 +274,6 @@ def send_email_digest(html_content):
         failures.append(f"Port 587 STARTTLS: {type(exc).__name__}: {exc}")
         print(f"Port 587 attempt failed: {type(exc).__name__}: {exc}")
 
-    # Port 465: implicit TLS fallback.
     try:
         print("Attempting Gmail SMTP on port 465 (SSL)...")
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
@@ -319,16 +285,10 @@ def send_email_digest(html_content):
     except (OSError, smtplib.SMTPException) as exc:
         failures.append(f"Port 465 SSL: {type(exc).__name__}: {exc}")
 
-    raise RuntimeError(
-        "Gmail could not send the digest using either SMTP connection. "
-        "Check that EMAIL_SENDER is the Gmail account that created the App Password, "
-        "2-Step Verification is enabled, and EMAIL_APP_PASSWORD is a current "
-        "16-character Google App Password. Do not use the normal Gmail password. "
-        + " | ".join(failures)
-    )
+    raise RuntimeError("Gmail could not send the digest using either SMTP connection. Check EMAIL_SENDER, 2-Step Verification, and the current 16-character Google App Password. Do not use the normal Gmail password. " + " | ".join(failures))
 
 def main():
-    print("Step 1: Searching for recent entry-level cybersecurity, QA, CSV, and support jobs...")
+    print("Step 1: Searching recent cybersecurity, IT, QA, support, and validation jobs...")
     jobs = fetch_jobs()
     print(f"Found {len(jobs)} unique raw postings.")
 
@@ -338,8 +298,6 @@ def main():
 
     print("Step 2: Scoring and filtering postings with Gemini...")
     digest_html = evaluate_with_gemini(jobs)
-
-    # Always publish the job cards to the GitHub Actions Summary screen first
     publish_to_github_summary(digest_html)
 
     print("Step 3: Delivering your morning email alert...")
