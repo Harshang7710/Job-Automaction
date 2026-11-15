@@ -1,0 +1,8 @@
+# Local credentials and runtime state
+.env
+.linkedin_alert_state.json
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
