@@ -146,11 +146,17 @@ def fetch_linkedin_alert_jobs():
     This does not log in to LinkedIn or scrape LinkedIn pages.
     """
     alert_email = (os.getenv("LINKEDIN_ALERT_EMAIL") or os.getenv("EMAIL_RECEIVER") or "").strip()
-    app_password = "".join((
-        os.getenv("LINKEDIN_ALERT_APP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or ""
-    ).split())
+    app_password = "".join((os.getenv("LINKEDIN_ALERT_APP_PASSWORD") or "").split())
+    smtp_sender = (os.getenv("EMAIL_SENDER") or "").strip()
+    if not app_password and alert_email and smtp_sender.lower() == alert_email.lower():
+        app_password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
+
     if not alert_email or not app_password:
-        print("LinkedIn alert import skipped: Gmail inbox credentials are not configured.")
+        print(
+            "LinkedIn alert import skipped: configure LINKEDIN_ALERT_EMAIL and "
+            "LINKEDIN_ALERT_APP_PASSWORD. EMAIL_APP_PASSWORD can only be reused "
+            "when the alert inbox is also EMAIL_SENDER."
+        )
         return []
 
     state_path = ".linkedin_alert_state.json"
@@ -344,6 +350,30 @@ def generate_with_fallback(client, prompt):
 
     raise RuntimeError("Could not find an active Gemini model for this API key.")
 
+def select_jobs_for_evaluation(raw_jobs, max_jobs=50, linkedin_limit=15):
+    """Keep a fair sample and reserve slots for jobs from LinkedIn alerts."""
+    if max_jobs <= 0:
+        return []
+
+    linkedin_jobs = [
+        job for job in raw_jobs
+        if job.get("job_publisher") == "LinkedIn Job Alert Email"
+    ]
+    other_jobs = [
+        job for job in raw_jobs
+        if job.get("job_publisher") != "LinkedIn Job Alert Email"
+    ]
+
+    linkedin_slots = min(len(linkedin_jobs), max(0, min(linkedin_limit, max_jobs)))
+    selected = linkedin_jobs[:linkedin_slots]
+    selected.extend(other_jobs[:max_jobs - len(selected)])
+
+    if len(selected) < max_jobs:
+        selected.extend(linkedin_jobs[linkedin_slots:max_jobs - len(selected) + linkedin_slots])
+
+    return selected[:max_jobs]
+
+
 def evaluate_with_gemini(raw_jobs):
     gemini_key = "".join((os.getenv("GEMINI_API_KEY") or "").split())
     if not gemini_key:
@@ -351,7 +381,7 @@ def evaluate_with_gemini(raw_jobs):
 
     client = genai.Client(api_key=gemini_key)
     compact_jobs = []
-    for job in raw_jobs[:50]:
+    for job in select_jobs_for_evaluation(raw_jobs):
         compact_jobs.append({
             "title": job.get("job_title") or job.get("title"),
             "company": job.get("employer_name") or job.get("company_name"),
