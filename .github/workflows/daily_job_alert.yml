@@ -23,6 +23,9 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Validate Python syntax
+        run: python -m py_compile main.py
+
       - name: Restore LinkedIn alert state
         uses: actions/cache/restore@v4
         with:
