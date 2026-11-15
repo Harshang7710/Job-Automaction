@@ -180,6 +180,35 @@ class TestJobCollectionAndSelection(unittest.TestCase):
 
         self.assertEqual({job["job_id"] for job in jobs}, {"j-1", "li-1"})
 
+    def test_jsearch_results_are_deduplicated_across_queries(self):
+        jsearch_job = {"job_id": "same-id", "job_title": "QA Engineer"}
+        with patch.dict(os.environ, {"RAPIDAPI_KEY": "test-key"}, clear=True), patch.object(
+            main, "SEARCH_QUERIES", ["query-one", "query-two"]
+        ), patch("main.requests.get", return_value=FakeResponse({"data": [jsearch_job]})) as get, patch(
+            "main.fetch_linkedin_alert_jobs", return_value=[]
+        ):
+            jobs = main.fetch_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(get.call_count, 2)
+
+    def test_remotive_backup_runs_when_jsearch_key_is_missing(self):
+        remotive_job = {
+            "id": 77,
+            "title": "Remote QA Tester",
+            "company_name": "Example Co",
+            "candidate_required_location": "Worldwide",
+            "description": "Manual testing role",
+            "url": "https://example.com/jobs/77",
+        }
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "main.requests.get", return_value=FakeResponse({"jobs": [remotive_job]})
+        ) as get, patch("main.fetch_linkedin_alert_jobs", return_value=[]):
+            jobs = main.fetch_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["job_title"], "Remote QA Tester")
+        self.assertTrue(jobs[0]["job_is_remote"])
+        self.assertEqual(get.call_count, 10)
+
     def test_linkedin_jobs_get_slots_in_gemini_input(self):
         ordinary = [
             {"job_id": f"api-{i}", "job_title": "API job"}
@@ -267,6 +296,12 @@ class TestGeminiAndEmail(unittest.TestCase):
         connection.starttls.assert_called_once()
         args = connection.sendmail.call_args.args
         self.assertEqual(args[1], ["receiver@example.com"])
+        from email import message_from_string
+        delivered_message = message_from_string(args[2])
+        self.assertEqual(
+            delivered_message["Subject"],
+            "Morning IT Job Digest | Curated by Gemini",
+        )
 
     def test_email_falls_back_to_ssl_after_starttls_connection_error(self):
         failing = MagicMock()
