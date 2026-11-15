@@ -49,4 +49,5 @@ The **Job Hunter QA** GitHub Actions workflow runs these tests on relevant pushe
 - `EMAIL_SENDER`
 - `EMAIL_APP_PASSWORD`
 - `EMAIL_RECEIVER`
+- `EMAIL_CC` (optional; overrides the script's default CC recipient)
 
