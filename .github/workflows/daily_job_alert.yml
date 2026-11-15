@@ -6,9 +6,13 @@ on:
     - cron: '30 4 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   run-job-hunter:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -46,7 +50,7 @@ jobs:
         run: python main.py
 
       - name: Save LinkedIn alert state
-        if: always()
+        if: ${{ always() && hashFiles('.linkedin_alert_state.json') != '' }}
         uses: actions/cache/save@v4
         with:
           path: .linkedin_alert_state.json
