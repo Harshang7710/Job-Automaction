@@ -23,29 +23,37 @@ Core & Emerging Skills:
 - IT, Systems & Networking: TCP/IP, OSI model, Subnetting, DNS/DHCP, Linux/Windows Server basics, Network Security (Firewalls, VPN)
 - Security Tools: Wireshark, Burp Suite (Foundational)
 
-Target Roles to Hunt:
-1. QA Test Engineer / Manual Tester / Software Test Engineer / SDET (Junior)
-2. QA IT Executive / CSV (Computer System Validation) / IT Compliance in Pharma or Healthcare
-3. Application Support / IT Support / Technical Support Engineer
-4. Entry-level Cybersecurity Analyst / SOC Analyst / Security Operations (L1)
-5. Junior GRC / Information Security Compliance / Risk Analyst
-6. Junior Red Team / Penetration Testing / Vulnerability Management roles (entry-level only)
-7. Network Support Engineer
+Cybersecurity roles are the primary career goal. Target entry-level roles:
+- SOC Analyst L1 / Tier 1, Security Operations Analyst, Junior Security Analyst, security monitoring and incident triage
+- Junior GRC / Information Security Compliance / IT Risk Analyst / Security Audit Associate
+- Entry-level Vulnerability Management Analyst / Vulnerability Assessment Associate
+- Security Operations or junior network-security roles
+- Red Team / penetration testing only for genuine trainee, intern, graduate, or junior openings that do not require substantial prior offensive-security experience
+
+Other relevant roles (secondary priority):
+- QA Test Engineer / Manual Tester / Software Test Engineer / SDET (Junior)
+- QA IT Executive / CSV (Computer System Validation) / IT Compliance in Pharma or Healthcare
+- Application Support / IT Support / Technical Support Engineer / Network Support Engineer
 
 Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide opportunities.
-Exclude: High-seniority roles requiring 5+ years of experience, non-technical BPO, and pure sales.
+Experience fit: Prefer 0-2 years, trainee, graduate, associate, junior, and L1 roles. Consider up to 3 years only when the role is clearly junior and the requirements fit the profile. Exclude senior, lead, manager, architect, and other advanced roles, as well as roles requiring 4+ years of experience, non-technical BPO, or pure sales.
+Do not claim certifications, tools, hands-on security experience, or qualifications not listed above.
 """
 
+# Cybersecurity searches come first so they are represented in the digest when results are capped.
 SEARCH_QUERIES = [
+    "entry level SOC Analyst L1 Tier 1 India",
+    "junior cybersecurity analyst security operations India 0-2 years",
+    "graduate trainee security operations analyst India",
+    "junior GRC information security compliance risk analyst India",
+    "entry level information security audit associate India",
+    "junior vulnerability management analyst vulnerability assessment India",
+    "trainee junior penetration tester red team India entry level",
+    "entry level network security analyst India",
     "QA Tester in India",
     "Application Support Engineer in India",
     "Computer System Validation QA in India",
-    "Network Engineer in India",
-    "Entry level SOC Analyst in India",
-    "Cybersecurity Analyst security operations L1 India",
-    "Junior GRC information security compliance analyst India",
-    "Junior red team penetration tester India",
-    "Entry level vulnerability management analyst India"
+    "Network Engineer in India"
 ]
 
 def extract_job_list(payload):
@@ -138,7 +146,7 @@ def fetch_jobs():
     # Free Backup Source if JSearch returns 0 jobs
     if not all_jobs:
         print("Fetching from free backup job board (Remotive API)...")
-        for bq in ["QA", "Support", "Security", "SOC analyst", "GRC", "penetration testing", "red team"]:
+        for bq in ["SOC analyst", "security operations", "GRC", "vulnerability analyst", "penetration testing", "red team", "QA", "Support", "Security"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
                 if resp.status_code == 200:
@@ -205,31 +213,28 @@ def evaluate_with_gemini(raw_jobs):
     prompt = f"""
     You are Harshang Patel's dedicated AI Career Agent.
 
-    Here is Harshang's technical background, resume details, and target preferences:
+    Candidate background and target roles:
     {USER_PROFILE}
 
-    Here are the raw IT job postings retrieved today:
+    Raw job postings retrieved today:
     {compact_jobs}
 
-    Tasks:
-    1. Evaluate each job against Harshang's qualifications, including QA manual/functional/UAT, Pharma validation/GAMP 5, API/Postman, Application/IT support, and entry-level cybersecurity. For cybersecurity, consider SOC/security operations and monitoring, GRC/risk/compliance, junior red team or penetration testing, vulnerability management, and network security roles. Treat red-team and penetration-testing roles as targets only when they are genuinely junior/entry-level; do not imply experience or skills not listed in the profile.
-    2. Select the best 5 to 10 matching openings.
-    3. Format the final output as a clean, responsive HTML email digest using inline CSS.
-       - Use a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
-       - For each job card include:
+    Screening and ranking rules:
+    1. Cybersecurity is the candidate's primary goal. Prioritize genuine entry-level cybersecurity openings, especially SOC Analyst L1/Tier 1, Security Operations Analyst, Junior Security Analyst, junior GRC/compliance/risk/audit, and junior vulnerability-management roles. QA, CSV, IT support, and network support are secondary alternatives, not substitutes when suitable entry-level cybersecurity jobs are available.
+    2. Accept roles described as intern, trainee, graduate, junior, associate, L1/Tier 1, or entry-level. Prefer 0-2 years of required experience. A clearly junior role asking for up to 3 years can still be considered if the listed duties and requirements fit the candidate. Reject postings requiring 4+ years or describing senior, lead, manager, architect, or advanced responsibilities.
+    3. Treat red-team and penetration-testing roles especially strictly: include only genuinely entry-level internships, trainee, graduate, or junior openings. Exclude roles requiring substantial professional offensive-security experience, advanced certifications, or skills absent from the candidate profile. Do not invent qualifications or imply that foundational exposure equals professional experience.
+    4. Review the actual requirements and responsibilities, not just keywords in the title. Do not recommend a role if its experience, certification, or technical requirements clearly exceed the profile. Be honest about gaps and score match accordingly. Do not invent candidate experience, certifications, tools, or skills.
+    5. Select the best 5 to 10 suitable jobs. If fewer than 5 genuinely suitable jobs exist, show only the suitable results rather than padding with poor matches. Rank strong entry-level cybersecurity matches first.
+    6. Format the output as a clean, responsive HTML email digest using inline CSS and a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
+       For each job card include:
          * Job Title & Company Name
-         * Location & Work Mode (Highlight if Remote or Global)
-         * Match Score & 1-sentence explanation of why it fits Harshang's CV
-         * A clickable application link. If apply_link_is_direct is true, label it "Direct Apply".
-           Otherwise label it "View Job / Apply" and do not claim it is the employer's direct career page.
-         * The source platform/publisher (for example, LinkedIn, Shine, Glassdoor, or the publisher supplied by JSearch).
-         * If a verified company_career_page URL is supplied, include a separate "Company Careers Page" link.
-         * If public_hr_email or public_hr_phone is supplied in the source data, show it as "Public HR Contact".
-           If no verified contact is supplied, write "Public HR contact not available".
-       - Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data.
-       - NEVER invent or guess a company career URL, HR email, recruiter identity, or phone number.
-       - Do not present a job-board redirect as a direct company application link.
-       - Keep all existing email styling, candidate targeting, match scoring, and filtering behavior.
+         * Location & Work Mode (highlight Remote or Global)
+         * Match Score & one-sentence explanation grounded in the posting and candidate profile
+         * A clickable application link. If apply_link_is_direct is true, label it "Direct Apply"; otherwise label it "View Job / Apply" and do not claim it is the employer's direct career page.
+         * Source platform/publisher, using only what is supplied in the job data
+         * A separate "Company Careers Page" link only if a company_career_page URL is supplied
+         * "Public HR Contact" only when a public HR email or phone is supplied; otherwise write "Public HR contact not available"
+       Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data. NEVER invent or guess a company career URL, HR contact, recruiter identity, or phone number. Do not present a job-board redirect as a direct company application link. Keep the existing email styling and candidate targeting.
 
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
@@ -323,7 +328,7 @@ def send_email_digest(html_content):
     )
 
 def main():
-    print("Step 1: Searching for recent IT, QA, CSV, Support, and Cybersecurity job postings...")
+    print("Step 1: Searching for recent entry-level cybersecurity, QA, CSV, and support jobs...")
     jobs = fetch_jobs()
     print(f"Found {len(jobs)} unique raw postings.")
 
