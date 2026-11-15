@@ -28,7 +28,7 @@ Add these under **Repository → Settings → Secrets and variables → Actions 
 - `LINKEDIN_ALERT_EMAIL`: the Gmail inbox address that receives LinkedIn alerts.
 - `LINKEDIN_ALERT_APP_PASSWORD`: a Google App Password for that Gmail inbox (not your normal Gmail password).
 
-If the LinkedIn alert inbox is the same Gmail account used by `EMAIL_RECEIVER` and its App Password is already in `EMAIL_APP_PASSWORD`, the two new secrets can be omitted. The importer checks messages from the previous 3 days and only imports links pointing to LinkedIn job pages. It accesses the inbox read-only.
+If the LinkedIn alert inbox is the same Gmail account used by `EMAIL_RECEIVER` and its App Password is already in `EMAIL_APP_PASSWORD`, the two new secrets can be omitted. The importer checks messages from the previous 3 days and only imports links pointing to LinkedIn job pages. It accesses the inbox read-only. Imported job links are cached between workflow runs to avoid repeating the same LinkedIn job in multiple digests.
 
 **Never add your LinkedIn password, Gmail password, or app password to source code or send it in chat.** Store credentials only in GitHub Actions Secrets.
 
