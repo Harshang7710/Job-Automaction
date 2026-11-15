@@ -27,7 +27,10 @@ Target Roles to Hunt:
 1. QA Test Engineer / Manual Tester / Software Test Engineer / SDET (Junior)
 2. QA IT Executive / CSV (Computer System Validation) / IT Compliance in Pharma or Healthcare
 3. Application Support / IT Support / Technical Support Engineer
-4. Cybersecurity Analyst (Entry-level / L1) / Network Support Engineer
+4. Entry-level Cybersecurity Analyst / SOC Analyst / Security Operations (L1)
+5. Junior GRC / Information Security Compliance / Risk Analyst
+6. Junior Red Team / Penetration Testing / Vulnerability Management roles (entry-level only)
+7. Network Support Engineer
 
 Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide opportunities.
 Exclude: High-seniority roles requiring 5+ years of experience, non-technical BPO, and pure sales.
@@ -37,7 +40,12 @@ SEARCH_QUERIES = [
     "QA Tester in India",
     "Application Support Engineer in India",
     "Computer System Validation QA in India",
-    "Network Engineer in India"
+    "Network Engineer in India",
+    "Entry level SOC Analyst in India",
+    "Cybersecurity Analyst security operations L1 India",
+    "Junior GRC information security compliance analyst India",
+    "Junior red team penetration tester India",
+    "Entry level vulnerability management analyst India"
 ]
 
 def extract_job_list(payload):
@@ -130,7 +138,7 @@ def fetch_jobs():
     # Free Backup Source if JSearch returns 0 jobs
     if not all_jobs:
         print("Fetching from free backup job board (Remotive API)...")
-        for bq in ["QA", "Support", "Security"]:
+        for bq in ["QA", "Support", "Security", "SOC analyst", "GRC", "penetration testing", "red team"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
                 if resp.status_code == 200:
@@ -204,7 +212,7 @@ def evaluate_with_gemini(raw_jobs):
     {compact_jobs}
 
     Tasks:
-    1. Evaluate each job against Harshang's qualifications (QA manual/functional/UAT, Pharma validation/GAMP 5, API/Postman, Application/IT support, entry-level network & cyber security).
+    1. Evaluate each job against Harshang's qualifications, including QA manual/functional/UAT, Pharma validation/GAMP 5, API/Postman, Application/IT support, and entry-level cybersecurity. For cybersecurity, consider SOC/security operations and monitoring, GRC/risk/compliance, junior red team or penetration testing, vulnerability management, and network security roles. Treat red-team and penetration-testing roles as targets only when they are genuinely junior/entry-level; do not imply experience or skills not listed in the profile.
     2. Select the best 5 to 10 matching openings.
     3. Format the final output as a clean, responsive HTML email digest using inline CSS.
        - Use a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
@@ -315,7 +323,7 @@ def send_email_digest(html_content):
     )
 
 def main():
-    print("Step 1: Searching for recent IT, QA, CSV, and Support job postings...")
+    print("Step 1: Searching for recent IT, QA, CSV, Support, and Cybersecurity job postings...")
     jobs = fetch_jobs()
     print(f"Found {len(jobs)} unique raw postings.")
 
