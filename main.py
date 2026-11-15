@@ -451,7 +451,7 @@ def send_email_digest(html_content):
         raise ValueError("EMAIL_APP_PASSWORD should be the 16-character Google App Password (remove spaces; do not use your normal Gmail password).")
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "Morning Job Digest | Curated by Gemini"
+    msg["Subject"] = "Morning IT Job Digest | Curated by Gemini"
     msg["From"] = sender
     msg["To"] = receiver
     if cc:
