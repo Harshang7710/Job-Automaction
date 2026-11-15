@@ -1,6 +1,7 @@
 import os
 import re
 import imaplib
+import json
 import smtplib
 from datetime import datetime, timedelta
 from email import message_from_bytes
@@ -109,6 +110,9 @@ def extract_job_list(payload):
     return jobs
 
 
+LINKEDIN_PENDING_LINKS = set()
+
+
 def _decode_email_header(value):
     """Decode an RFC 2047 email header safely."""
     try:
@@ -149,7 +153,17 @@ def fetch_linkedin_alert_jobs():
         print("LinkedIn alert import skipped: Gmail inbox credentials are not configured.")
         return []
 
-    jobs, seen_links = [], set()
+    state_path = ".linkedin_alert_state.json"
+    persisted_links = set()
+    try:
+        with open(state_path, "r", encoding="utf-8") as state_file:
+            persisted_links = set(json.load(state_file).get("seen_links", []))
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        print(f"LinkedIn alert state could not be read: {exc}")
+
+    jobs, seen_links = [], set(persisted_links)
     since_date = (datetime.now() - timedelta(days=3)).strftime("%d-%b-%Y")
     try:
         mailbox = imaplib.IMAP4_SSL("imap.gmail.com", 993, timeout=30)
@@ -206,6 +220,7 @@ def fetch_linkedin_alert_jobs():
                         context = plain_clean[:1800]
 
                     seen_links.add(link)
+                    LINKEDIN_PENDING_LINKS.add(link)
                     jobs.append({
                         "job_id": "linkedin-alert:" + link,
                         "job_title": title,
@@ -226,8 +241,28 @@ def fetch_linkedin_alert_jobs():
     except Exception as exc:
         print(f"LinkedIn alert import warning: {type(exc).__name__}: {exc}")
 
-    print(f"Imported {len(jobs)} job links from LinkedIn alert emails.")
+    print(f"Imported {len(jobs)} new job links from LinkedIn alert emails.")
     return jobs
+
+def save_linkedin_alert_state():
+    """Persist imported links only after the daily digest email was sent."""
+    if not LINKEDIN_PENDING_LINKS:
+        return
+    state_path = ".linkedin_alert_state.json"
+    existing = set()
+    try:
+        with open(state_path, "r", encoding="utf-8") as state_file:
+            existing = set(json.load(state_file).get("seen_links", []))
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        print(f"LinkedIn alert state could not be loaded before saving: {exc}")
+
+    existing.update(LINKEDIN_PENDING_LINKS)
+    # Keep the state file compact while retaining enough history for deduplication.
+    with open(state_path, "w", encoding="utf-8") as state_file:
+        json.dump({"seen_links": sorted(existing)[-2000:]}, state_file, indent=2)
+    print(f"Saved {len(LINKEDIN_PENDING_LINKS)} LinkedIn links for duplicate prevention.")
 
 def fetch_jobs():
     rapidapi_key = "".join((os.getenv("RAPIDAPI_KEY") or "").split())
@@ -437,6 +472,7 @@ def main():
 
     print("Step 3: Delivering your morning email alert...")
     send_email_digest(digest_html)
+    save_linkedin_alert_state()
 
 if __name__ == "__main__":
     main()
