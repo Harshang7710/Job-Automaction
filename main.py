@@ -443,7 +443,7 @@ def send_email_digest(html_content):
     sender = "".join((os.getenv("EMAIL_SENDER") or "").split())
     password = "".join((os.getenv("EMAIL_APP_PASSWORD") or "").split())
     receiver = "".join((os.getenv("EMAIL_RECEIVER") or "").split())
-    cc = "".join((os.getenv("EMAIL_CC") or "harshangpatel@alembic.co.in").split())
+    cc = "".join((os.getenv("EMAIL_CC") or "harshang.patel@alembic.co.in").split())
 
     if not all([sender, password, receiver]):
         raise ValueError("Missing EMAIL_SENDER, EMAIL_APP_PASSWORD, or EMAIL_RECEIVER in GitHub Secrets.")
