@@ -3,7 +3,7 @@ name: Daily Morning Job Hunter
 on:
   schedule:
     # 04:30 UTC corresponds to 10:00 AM IST
-    - cron: '30 4 * * *'
+    - cron: '37 4 * * *'
   workflow_dispatch:
 
 permissions:
