@@ -2,7 +2,7 @@ name: Daily Morning Job Hunter
 
 on:
   schedule:
-    # 04:30 UTC corresponds to 10:00 AM IST
+    # 04:37 UTC corresponds to 10:07 AM IST
     - cron: '37 4 * * *'
   workflow_dispatch:
 
