@@ -355,7 +355,7 @@ class TestMainFlowAndWorkflow(unittest.TestCase):
         )
         with open(workflow_path, encoding="utf-8") as workflow_file:
             workflow = workflow_file.read()
-        self.assertIn("cron: '30 4 * * *'", workflow)
+        self.assertIn("cron: '37 4 * * *'", workflow)
         self.assertIn("hashFiles('.linkedin_alert_state.json') != ''", workflow)
         self.assertIn("python -m py_compile main.py", workflow)
 
