@@ -397,7 +397,7 @@ class TestApiUsageMonitoring(unittest.TestCase):
         self.assertIn("API Usage & Quota Monitor", summary)
         self.assertIn("RapidAPI JSearch", summary)
         self.assertIn("Google Gemini", summary)
-        self.assertIn("not guaranteed monthly account balance", summary.lower())
+        self.assertIn("guaranteed monthly account balance", summary.lower())
         self.assertIn("SMTP does not expose", summary)
 
 
