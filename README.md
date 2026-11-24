@@ -10,7 +10,19 @@ An automated daily job-search assistant that gathers recent IT job listings, sco
 
 ## Daily schedule
 
-The GitHub Actions workflow runs every day at **10:00 AM India Standard Time (IST)**. It can also be started manually from the Actions tab.
+The GitHub Actions workflow is scheduled for **10:07 AM India Standard Time (IST)**. GitHub-hosted scheduled workflows can be delayed during periods of high platform load. It can also be started manually from the Actions tab.
+
+
+## API usage and quota monitoring
+
+Each job run adds an **API Usage & Quota Monitor** section to the GitHub Actions run summary:
+
+- **RapidAPI JSearch:** request count, successes/errors, and remaining/limit/reset values only when RapidAPI supplies rate-limit headers.
+- **Google Gemini:** model attempts, model names, token usage when returned by the SDK, and quota/rate-limit errors. The generation API does not provide an account-wide remaining monthly balance.
+- **Remotive:** backup request count. No account quota endpoint or API key is configured.
+- **Gmail SMTP:** whether the digest was sent. SMTP does not expose remaining daily sending quota to this script.
+
+The report deliberately does not estimate monthly balances from per-run counts. For the authoritative subscribed-plan monthly allowance and billing usage, check the provider dashboard (for example, the RapidAPI application/subscription dashboard and Google AI Studio usage page). Provider headers may represent a rate-limit window rather than a monthly plan allowance.
 
 ## Enable LinkedIn job alerts
 
