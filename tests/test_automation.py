@@ -360,5 +360,46 @@ class TestMainFlowAndWorkflow(unittest.TestCase):
         self.assertIn("python -m py_compile main.py", workflow)
 
 
+
+
+class TestApiUsageMonitoring(unittest.TestCase):
+    def test_jsearch_quota_headers_are_captured_case_insensitively(self):
+        response = SimpleNamespace(
+            status_code=200,
+            headers={
+                "X-RateLimit-Requests-Remaining": "143",
+                "X-RateLimit-Requests-Limit": "200",
+                "X-RateLimit-Requests-Reset": "1735689600",
+            },
+        )
+        before = main.API_USAGE_STATS["jsearch_requests"]
+        main.record_jsearch_response(response)
+        self.assertEqual(main.API_USAGE_STATS["jsearch_requests"], before + 1)
+        self.assertEqual(main.API_USAGE_STATS["jsearch_remaining"], "143")
+        self.assertEqual(main.API_USAGE_STATS["jsearch_limit"], "200")
+        self.assertEqual(main.API_USAGE_STATS["jsearch_reset"], "1735689600")
+
+    def test_missing_quota_headers_are_not_guessed(self):
+        response = SimpleNamespace(status_code=200, headers={})
+        main.API_USAGE_STATS["jsearch_remaining"] = None
+        main.API_USAGE_STATS["jsearch_limit"] = None
+        main.record_jsearch_response(response)
+        self.assertIsNone(main.API_USAGE_STATS["jsearch_remaining"])
+        self.assertIsNone(main.API_USAGE_STATS["jsearch_limit"])
+
+    def test_summary_reports_usage_and_unavailable_account_balances(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary_path = os.path.join(temp_dir, "summary.md")
+            with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": summary_path}, clear=False):
+                main.publish_api_usage_summary()
+            with open(summary_path, encoding="utf-8") as summary_file:
+                summary = summary_file.read()
+        self.assertIn("API Usage & Quota Monitor", summary)
+        self.assertIn("RapidAPI JSearch", summary)
+        self.assertIn("Google Gemini", summary)
+        self.assertIn("not guaranteed monthly account balance", summary.lower())
+        self.assertIn("SMTP does not expose", summary)
+
+
 if __name__ == "__main__":
     unittest.main()
