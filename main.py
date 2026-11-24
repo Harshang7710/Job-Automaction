@@ -16,6 +16,51 @@ import requests
 
 load_dotenv()
 
+API_USAGE_STATS = {
+    "jsearch_requests": 0, "jsearch_success": 0, "jsearch_errors": 0,
+    "jsearch_remaining": None, "jsearch_limit": None, "jsearch_reset": None,
+    "remotive_requests": 0, "gemini_calls": 0, "gemini_models": [],
+    "gemini_tokens": 0, "gemini_quota_errors": 0, "email_sent": False
+}
+
+
+def record_jsearch_response(response):
+    """Capture provider-supplied rate-limit headers without guessing the quota period."""
+    stats = API_USAGE_STATS
+    stats["jsearch_requests"] += 1
+    if response.status_code == 200:
+        stats["jsearch_success"] += 1
+    else:
+        stats["jsearch_errors"] += 1
+    headers = {str(k).lower(): v for k, v in getattr(response, "headers", {}).items()}
+    stats["jsearch_remaining"] = headers.get("x-ratelimit-requests-remaining", headers.get("x-ratelimit-remaining", stats["jsearch_remaining"]))
+    stats["jsearch_limit"] = headers.get("x-ratelimit-requests-limit", headers.get("x-ratelimit-limit", stats["jsearch_limit"]))
+    stats["jsearch_reset"] = headers.get("x-ratelimit-requests-reset", headers.get("x-ratelimit-reset", stats["jsearch_reset"]))
+
+
+def publish_api_usage_summary():
+    """Add per-run usage and any exact quota values returned by providers."""
+    s = API_USAGE_STATS
+    remaining = s["jsearch_remaining"] if s["jsearch_remaining"] is not None else "Not returned by API"
+    limit = s["jsearch_limit"] if s["jsearch_limit"] is not None else "Not returned by API"
+    reset = s["jsearch_reset"] if s["jsearch_reset"] is not None else "Not returned by API"
+    lines = [
+        "## API Usage & Quota Monitor", "",
+        "| Service | This run | Remaining quota / details |",
+        "|---|---:|---|",
+        f"| RapidAPI JSearch | {s['jsearch_requests']} requests; {s['jsearch_success']} successful; {s['jsearch_errors']} errors | Remaining: {remaining}; limit: {limit}; reset: {reset} (provider headers) |",
+        f"| Remotive | {s['remotive_requests']} requests | No account quota endpoint configured |",
+        f"| Google Gemini | {s['gemini_calls']} model attempts; models: {', '.join(s['gemini_models']) or 'none'} | {s['gemini_tokens']} tokens reported this run; quota errors: {s['gemini_quota_errors']}; account-wide remaining quota not exposed by generation response |",
+        f"| Gmail SMTP | {'Sent' if s['email_sent'] else 'Not sent'} | SMTP does not expose remaining sending quota |",
+        "", "Note: this is per-run telemetry, not a guaranteed monthly account balance.", ""
+    ]
+    print("\n".join(lines))
+    summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as output:
+            output.write("\n".join(lines) + "\n")
+
+
 USER_PROFILE = """
 Candidate: Harshang Patel (patidar4774@gmail.com)
 Education: Bachelor of Engineering (Information Technology)
@@ -286,6 +331,7 @@ def fetch_jobs():
             params = {"query": q, "page": "1", "num_pages": "1", "date_posted": "3days"}
             try:
                 response = requests.get(url, headers=headers, params=params, timeout=20)
+                record_jsearch_response(response)
                 print(f"JSearch Query '{q}' -> HTTP Status: {response.status_code}")
                 if response.status_code == 200:
                     jobs_data = extract_job_list(response.json())
@@ -298,6 +344,7 @@ def fetch_jobs():
                 else:
                     print(f"  API Warning: {response.text[:250]}")
             except Exception as e:
+                API_USAGE_STATS["jsearch_errors"] += 1
                 print(f"Error fetching query '{q}': {e}")
     else:
         print("Warning: RAPIDAPI_KEY secret is empty.")
@@ -308,6 +355,7 @@ def fetch_jobs():
         for bq in ["SOC analyst", "security operations", "GRC", "vulnerability analyst", "penetration testing", "red team", "QA", "IT support", "validation", "network support"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
+                API_USAGE_STATS["remotive_requests"] += 1
                 if resp.status_code == 200:
                     for item in resp.json().get("jobs", []):
                         jid = str(item.get("id"))
@@ -344,8 +392,16 @@ def generate_with_fallback(client, prompt):
     for model_name in candidate_models:
         try:
             print(f"Trying Gemini model: {model_name}...")
-            return client.models.generate_content(model=model_name, contents=prompt)
+            API_USAGE_STATS["gemini_calls"] += 1
+            API_USAGE_STATS["gemini_models"].append(model_name)
+            response = client.models.generate_content(model=model_name, contents=prompt)
+            usage = getattr(response, "usage_metadata", None)
+            if usage is not None:
+                API_USAGE_STATS["gemini_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
+            return response
         except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e).upper() or "QUOTA" in str(e).upper():
+                API_USAGE_STATS["gemini_quota_errors"] += 1
             print(f"  Model {model_name} unavailable ({e}). Trying next...")
 
     raise RuntimeError("Could not find an active Gemini model for this API key.")
@@ -468,6 +524,7 @@ def send_email_digest(html_content):
             server.ehlo()
             server.login(sender, password)
             server.sendmail(sender, recipients, msg.as_string())
+        API_USAGE_STATS["email_sent"] = True
         print("SUCCESS: Digest email sent using Gmail port 587.")
         return
     except (OSError, smtplib.SMTPException) as exc:
@@ -480,6 +537,7 @@ def send_email_digest(html_content):
             server.ehlo()
             server.login(sender, password)
             server.sendmail(sender, recipients, msg.as_string())
+        API_USAGE_STATS["email_sent"] = True
         print("SUCCESS: Digest email sent using Gmail port 465.")
         return
     except (OSError, smtplib.SMTPException) as exc:
@@ -494,6 +552,7 @@ def main():
 
     if not jobs:
         print("No job postings found from primary or backup sources.")
+        publish_api_usage_summary()
         return
 
     print("Step 2: Scoring and filtering postings with Gemini...")
@@ -503,6 +562,7 @@ def main():
     print("Step 3: Delivering your morning email alert...")
     send_email_digest(digest_html)
     save_linkedin_alert_state()
+    publish_api_usage_summary()
 
 if __name__ == "__main__":
     main()
