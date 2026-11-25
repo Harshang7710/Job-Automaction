@@ -20,7 +20,7 @@ API_USAGE_STATS = {
     "jsearch_requests": 0, "jsearch_success": 0, "jsearch_errors": 0,
     "jsearch_remaining": None, "jsearch_limit": None, "jsearch_reset": None,
     "remotive_requests": 0, "gemini_calls": 0, "gemini_models": [],
-    "gemini_tokens": 0, "gemini_quota_errors": 0, "email_sent": False
+    "gemini_tokens": 0, "gemini_quota_errors": 0, "gemini_fallback_used": False, "email_sent": False
 }
 
 
@@ -50,7 +50,7 @@ def publish_api_usage_summary():
         "|---|---:|---|",
         f"| RapidAPI JSearch | {s['jsearch_requests']} requests; {s['jsearch_success']} successful; {s['jsearch_errors']} errors | Remaining: {remaining}; limit: {limit}; reset: {reset} (provider headers) |",
         f"| Remotive | {s['remotive_requests']} requests | No account quota endpoint configured |",
-        f"| Google Gemini | {s['gemini_calls']} model attempts; models: {', '.join(s['gemini_models']) or 'none'} | {s['gemini_tokens']} tokens reported this run; quota errors: {s['gemini_quota_errors']}; account-wide remaining quota not exposed by generation response |",
+        f"| Google Gemini | {s['gemini_calls']} model attempts; models: {', '.join(s['gemini_models']) or 'none'} | {s['gemini_tokens']} tokens reported; quota errors: {s['gemini_quota_errors']}; local fallback used: {'Yes' if s['gemini_fallback_used'] else 'No'}; account-wide remaining quota not exposed by generation response |",
         f"| Gmail SMTP | {'Sent' if s['email_sent'] else 'Not sent'} | SMTP does not expose remaining sending quota |",
         "", "Note: this is per-run telemetry, not a guaranteed monthly account balance.", ""
     ]
@@ -568,6 +568,7 @@ def evaluate_with_gemini(raw_jobs):
             return html_output.strip()
         raise RuntimeError("Gemini returned an empty digest.")
     except Exception as exc:
+        API_USAGE_STATS["gemini_fallback_used"] = True
         print(f"Gemini screening unavailable; using conservative local screening instead: {type(exc).__name__}: {exc}")
         return evaluate_without_gemini(raw_jobs)
 
