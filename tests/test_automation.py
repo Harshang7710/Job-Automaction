@@ -200,7 +200,8 @@ class TestJobCollectionAndSelection(unittest.TestCase):
         ):
             jobs = main.fetch_jobs()
         self.assertEqual(len(jobs), 1)
-        self.assertEqual(get.call_count, 2)
+        # Two JSearch queries plus ten Remotive backup searches (fewer than five jobs).
+        self.assertEqual(get.call_count, 12)
 
     def test_remotive_backup_runs_when_jsearch_key_is_missing(self):
         remotive_job = {
