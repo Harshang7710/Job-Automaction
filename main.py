@@ -441,7 +441,7 @@ def evaluate_without_gemini(raw_jobs):
     scored = []
     role_groups = {
         "Cybersecurity": ["soc analyst", "security operations", "security analyst", "cybersecurity", "cyber security", "grc", "information security", "it risk"],
-        "QA & Testing": ["manual tester", "manual testing", "qa engineer", "quality assurance", "software test", "sdet", "uat tester"],
+        "QA & Testing": ["manual tester", "manual testing", "qa tester", "qa testing", "qa engineer", "quality assurance", "software test", "sdet", "uat tester"],
         "IT Support": ["application support", "it support", "technical support", "helpdesk", "help desk", "service desk"],
         "Validation & Compliance": ["computer system validation", "csv", "gamp", "21 cfr", "it compliance", "gxp", "pharma validation"],
         "Networking": ["network support", "network engineer", "network operations", "network administrator"]
