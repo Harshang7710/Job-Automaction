@@ -13,6 +13,13 @@ An automated daily job-search assistant that gathers recent IT job listings, sco
 The GitHub Actions workflow is scheduled for **10:07 AM India Standard Time (IST)**. GitHub-hosted scheduled workflows can be delayed during periods of high platform load. It can also be started manually from the Actions tab.
 
 
+## Resilience when APIs are unavailable
+
+- If RapidAPI JSearch reports that its monthly request quota is exhausted, the search loop stops immediately so the workflow does not waste calls on the remaining queries.
+- If JSearch returns fewer than five usable postings, the workflow supplements them with the free Remotive source.
+- If Gemini is unavailable, overloaded, misconfigured, or returns no usable response, the workflow uses conservative local keyword screening to prepare a clearly labelled preliminary digest. Senior roles and postings explicitly requiring four or more years are excluded from this fallback.
+- The fallback is not equivalent to Gemini's detailed assessment; the email clearly tells the reader to verify each posting's full requirements.
+
 ## API usage and quota monitoring
 
 Each job run adds an **API Usage & Quota Monitor** section to the GitHub Actions run summary:
