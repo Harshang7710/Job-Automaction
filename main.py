@@ -8,7 +8,7 @@ from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from html import unescape
+from html import escape, unescape
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from google import genai
@@ -343,15 +343,20 @@ def fetch_jobs():
                             all_jobs.append(job)
                 else:
                     print(f"  API Warning: {response.text[:250]}")
+                    # Stop spending calls once RapidAPI explicitly reports monthly exhaustion.
+                    if response.status_code == 429 and "monthly quota" in response.text.lower():
+                        print("JSearch monthly quota is exhausted; stopping further JSearch queries.")
+                        break
             except Exception as e:
                 API_USAGE_STATS["jsearch_errors"] += 1
                 print(f"Error fetching query '{q}': {e}")
     else:
         print("Warning: RAPIDAPI_KEY secret is empty.")
 
-    # Free backup source if JSearch returns no jobs.
-    if not all_jobs:
-        print("Fetching from free backup job board (Remotive API)...")
+    # Use the free backup whenever JSearch returns fewer than five usable jobs.
+    # This also prevents a partially exhausted API quota from producing a thin digest.
+    if len(all_jobs) < 5:
+        print(f"Fetching from free backup job board (Remotive API); JSearch supplied only {len(all_jobs)} jobs...")
         for bq in ["SOC analyst", "security operations", "GRC", "vulnerability analyst", "penetration testing", "red team", "QA", "IT support", "validation", "network support"]:
             try:
                 resp = requests.get(f"https://remotive.com/api/remote-jobs?search={bq}&limit=10", timeout=15)
@@ -368,7 +373,8 @@ def fetch_jobs():
                                 "job_country": "Global / Remote",
                                 "job_is_remote": True,
                                 "job_description": item.get("description", ""),
-                                "job_apply_link": item.get("url")
+                                "job_apply_link": item.get("url"),
+                                "job_publisher": "Remotive"
                             })
             except Exception as e:
                 print(f"Backup fetch error for '{bq}': {e}")
@@ -430,6 +436,83 @@ def select_jobs_for_evaluation(raw_jobs, max_jobs=50, linkedin_limit=15):
     return selected[:max_jobs]
 
 
+def evaluate_without_gemini(raw_jobs):
+    """Create a conservative local digest when Gemini is unavailable."""
+    scored = []
+    role_groups = {
+        "QA & Testing": ["qa", "quality assurance", "software test", "manual test", "tester", "testing", "sdet", "uat"],
+        "Validation & Compliance": ["validation", "csv", "gamp", "21 cfr", "compliance", "gxp", "it audit"],
+        "IT & Application Support": ["application support", "it support", "technical support", "help desk", "service desk"],
+        "Networking & Security": ["network", "soc analyst", "cybersecurity", "cyber security", "security analyst", "information security", "vulnerability", "grc"]
+    }
+    senior_terms = ("senior", "sr.", "lead", "manager", "architect", "director", "principal", "head of")
+    for job in select_jobs_for_evaluation(raw_jobs):
+        title = str(job.get("job_title") or job.get("title") or "").strip()
+        company = str(job.get("employer_name") or job.get("company_name") or "Company not specified").strip()
+        description = str(job.get("job_description") or job.get("description") or "")
+        text = (title + " " + description).lower()
+        if not title or any(term in title.lower() for term in senior_terms):
+            continue
+        if re.search(r"\b(?:4|5|6|7|8|9|10)\s*\+?\s*years?\b", text):
+            continue
+        matched = [group for group, terms in role_groups.items() if any(term in text for term in terms)]
+        if not matched:
+            continue
+        score = 48 + min(24, sum(4 for _ in matched))
+        if any(term in title.lower() for term in ("junior", "trainee", "graduate", "entry", "associate", "l1", "tier 1")):
+            score += 10
+        if re.search(r"\b(?:0|1|2)\s*(?:-|to)\s*(?:1|2|3)?\s*years?\b|\b(?:0|1|2)\s*\+?\s*years?\b", text):
+            score += 8
+        if any(term in text for term in ("4+ years", "5+ years", "6+ years")):
+            continue
+        score = min(score, 90)
+        reason = "Relevant to the candidate profile in " + ", ".join(matched) + ". Requirements still need manual verification."
+        location = ", ".join(str(job.get(k) or "").strip() for k in ("job_city", "job_country") if job.get(k))
+        if not location:
+            location = str(job.get("location") or ("Remote / Global" if job.get("job_is_remote") else "Location not specified"))
+        apply_url = job.get("job_apply_link") or job.get("apply_link") or job.get("url") or ""
+        if not str(apply_url).lower().startswith(("https://", "http://")):
+            apply_url = ""
+        source = job.get("job_publisher") or job.get("publisher") or job.get("source") or "Source not supplied"
+        career = job.get("employer_website") or job.get("company_website") or job.get("career_page_url") or ""
+        hr_email = job.get("hr_email") or job.get("recruiter_email") or job.get("contact_email") or ""
+        hr_phone = job.get("hr_phone") or job.get("recruiter_phone") or job.get("contact_phone") or ""
+        scored.append((score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, bool(job.get("job_is_remote"))))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    selected = scored[:10]
+    if not selected:
+        return """<!doctype html><html><body style="font-family:Arial,sans-serif;background:#f1f5f9;padding:24px;color:#0f172a">
+        <div style="max-width:720px;margin:auto;background:#fff;padding:24px;border-radius:12px">
+        <h2 style="background:#0f172a;color:#fff;padding:18px;border-radius:8px">Morning IT Job Digest</h2>
+        <p>Today's sources returned postings, but none could be confidently matched to the current entry-level QA, validation, IT support, networking, or cybersecurity profile.</p>
+        <p>Please review the original job sources again later. No unsuitable roles have been added just to fill the digest.</p></div></body></html>"""
+    cards = []
+    for score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, remote in selected:
+        safe_title, safe_company = escape(title), escape(company)
+        safe_location, safe_reason, safe_source = escape(location), escape(reason), escape(str(source))
+        link = f'<a href="{escape(str(apply_url), quote=True)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none">{"Direct Apply" if False else "View Job / Apply"}</a>' if apply_url else '<span>Application link not supplied</span>'
+        extra = []
+        if career and str(career).startswith(("https://", "http://")):
+            extra.append(f'<div>Company careers: <a href="{escape(str(career), quote=True)}">Visit careers page</a></div>')
+        if hr_email:
+            extra.append(f'<div>Public HR email: {escape(str(hr_email))}</div>')
+        if hr_phone:
+            extra.append(f'<div>Public HR phone: {escape(str(hr_phone))}</div>')
+        extras_html = "".join(extra) if extra else "<div>Public HR contact not available</div>"
+        remote_label = " · Remote / Global" if remote else ""
+        cards.append(f"""<article style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin:14px 0">
+        <div style="font-size:12px;color:#64748b">MATCH SCORE: {score}/100</div>
+        <h3 style="margin:8px 0;color:#0f172a">{safe_title}</h3><div style="font-weight:600">{safe_company}</div>
+        <p style="color:#475569">{safe_location}{remote_label}</p><p>{safe_reason}</p>
+        <div>{link}</div><p style="font-size:12px;color:#64748b">Source: {safe_source}</p>
+        <div style="font-size:13px;color:#475569">{extras_html}</div></article>""")
+    return """<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;padding:20px">
+    <main style="max-width:760px;margin:auto"><header style="background:#0f172a;color:#fff;padding:22px;border-radius:12px">
+    <h1 style="margin:0;font-size:24px">Morning IT Job Digest</h1>
+    <p style="margin:8px 0 0;color:#cbd5e1">Fallback screening · Gemini temporarily unavailable</p></header>
+    <p style="color:#475569">These are preliminary keyword-based matches, not AI-verified recommendations. Check each job's full requirements before applying.</p>""" + "".join(cards) + """<footer style="color:#64748b;font-size:12px;padding:16px">Curated for the candidate profile. No unverified qualifications or contact details have been added.</footer></main></body></html>"""
+
+
 def evaluate_with_gemini(raw_jobs):
     gemini_key = "".join((os.getenv("GEMINI_API_KEY") or "").split())
     if not gemini_key:
@@ -474,13 +557,23 @@ def evaluate_with_gemini(raw_jobs):
     CRITICAL: Output ONLY the raw HTML string. Do NOT wrap it in markdown code blocks or triple backticks.
     """
 
-    response = generate_with_fallback(client, prompt)
-    html_output = response.text.strip()
-    if html_output.startswith("```html"):
-        html_output = html_output[7:]
-    if html_output.endswith("```"):
-        html_output = html_output[:-3]
-    return html_output.strip()
+    try:
+        gemini_key = "".join((os.getenv("GEMINI_API_KEY") or "").split())
+        if not gemini_key:
+            raise ValueError("GEMINI_API_KEY secret is missing in GitHub Secrets.")
+        client = genai.Client(api_key=gemini_key)
+        response = generate_with_fallback(client, prompt)
+        html_output = (response.text or "").strip()
+        if html_output.startswith("```html"):
+            html_output = html_output[7:]
+        if html_output.endswith("```"):
+            html_output = html_output[:-3]
+        if html_output.strip():
+            return html_output.strip()
+        raise RuntimeError("Gemini returned an empty digest.")
+    except Exception as exc:
+        print(f"Gemini screening unavailable; using conservative local screening instead: {type(exc).__name__}: {exc}")
+        return evaluate_without_gemini(raw_jobs)
 
 def publish_to_github_summary(html_content):
     """Writes the HTML job digest to the GitHub Actions run summary."""
