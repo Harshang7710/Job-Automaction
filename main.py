@@ -490,7 +490,7 @@ def evaluate_without_gemini(raw_jobs):
     for score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, remote in selected:
         safe_title, safe_company = escape(title), escape(company)
         safe_location, safe_reason, safe_source = escape(location), escape(reason), escape(str(source))
-        link = f'<a href="{escape(str(apply_url), quote=True)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none">{"Direct Apply" if False else "View Job / Apply"}</a>' if apply_url else '<span>Application link not supplied</span>'
+        link = f'<a href="{escape(str(apply_url), quote=True)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none">"View Job / Apply"</a>' if apply_url else '<span>Application link not supplied</span>'
         extra = []
         if career and str(career).startswith(("https://", "http://")):
             extra.append(f'<div>Company careers: <a href="{escape(str(career), quote=True)}">Visit careers page</a></div>')
@@ -514,11 +514,6 @@ def evaluate_without_gemini(raw_jobs):
 
 
 def evaluate_with_gemini(raw_jobs):
-    gemini_key = "".join((os.getenv("GEMINI_API_KEY") or "").split())
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY secret is missing in GitHub Secrets!")
-
-    client = genai.Client(api_key=gemini_key)
     compact_jobs = []
     for job in select_jobs_for_evaluation(raw_jobs):
         compact_jobs.append({
