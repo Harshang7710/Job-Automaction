@@ -477,7 +477,7 @@ def evaluate_without_gemini(raw_jobs):
         career = job.get("employer_website") or job.get("company_website") or job.get("career_page_url") or ""
         hr_email = job.get("hr_email") or job.get("recruiter_email") or job.get("contact_email") or ""
         hr_phone = job.get("hr_phone") or job.get("recruiter_phone") or job.get("contact_phone") or ""
-        scored.append((score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, bool(job.get("job_is_remote"))))
+        scored.append((score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, bool(job.get("job_is_remote")), bool(job.get("job_apply_is_direct"))))
     scored.sort(key=lambda item: item[0], reverse=True)
     selected = scored[:10]
     if not selected:
@@ -487,10 +487,11 @@ def evaluate_without_gemini(raw_jobs):
         <p>Today's sources returned postings, but none could be confidently matched to the current entry-level QA, validation, IT support, networking, or cybersecurity profile.</p>
         <p>Please review the original job sources again later. No unsuitable roles have been added just to fill the digest.</p></div></body></html>"""
     cards = []
-    for score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, remote in selected:
+    for score, title, company, location, reason, apply_url, source, career, hr_email, hr_phone, remote, is_direct in selected:
         safe_title, safe_company = escape(title), escape(company)
         safe_location, safe_reason, safe_source = escape(location), escape(reason), escape(str(source))
-        link = f'<a href="{escape(str(apply_url), quote=True)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none">"View Job / Apply"</a>' if apply_url else '<span>Application link not supplied</span>'
+        link_label = "Direct Apply" if is_direct else "View Job / Apply"
+        link = f'<a href="{escape(str(apply_url), quote=True)}" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:7px;text-decoration:none">{link_label}</a>' if apply_url else '<span>Application link not supplied</span>'
         extra = []
         if career and str(career).startswith(("https://", "http://")):
             extra.append(f'<div>Company careers: <a href="{escape(str(career), quote=True)}">Visit careers page</a></div>')
