@@ -180,6 +180,17 @@ class TestJobCollectionAndSelection(unittest.TestCase):
 
         self.assertEqual({job["job_id"] for job in jobs}, {"j-1", "li-1"})
 
+    def test_jsearch_stops_after_monthly_quota_exhaustion_and_uses_backup(self):
+        quota_response = FakeResponse({}, status_code=429, text="You have exceeded the MONTHLY quota for Requests")
+        backup_response = FakeResponse({"jobs": []})
+        with patch.dict(os.environ, {"RAPIDAPI_KEY": "test-key"}, clear=True), patch.object(
+            main, "SEARCH_QUERIES", ["one", "two", "three"]
+        ), patch("main.requests.get", side_effect=[quota_response] + [backup_response] * 10) as get, patch(
+            "main.fetch_linkedin_alert_jobs", return_value=[]
+        ):
+            main.fetch_jobs()
+        self.assertEqual(get.call_count, 11)  # one JSearch request + ten Remotive backup queries
+
     def test_jsearch_results_are_deduplicated_across_queries(self):
         jsearch_job = {"job_id": "same-id", "job_title": "QA Engineer"}
         with patch.dict(os.environ, {"RAPIDAPI_KEY": "test-key"}, clear=True), patch.object(
@@ -245,6 +256,34 @@ class TestGeminiAndEmail(unittest.TestCase):
         response = main.generate_with_fallback(client, "test prompt")
         self.assertIs(response, expected)
         self.assertEqual(client.models.generate_content.call_count, 2)
+
+    def test_digest_falls_back_when_all_gemini_models_are_unavailable(self):
+        client = MagicMock()
+        client.models.generate_content.side_effect = RuntimeError("503 UNAVAILABLE: temporary model overload")
+        jobs = [{
+            "job_id": "qa-1",
+            "job_title": "Junior QA Tester",
+            "employer_name": "Example Pharma",
+            "job_city": "Vadodara",
+            "job_description": "Manual testing, regression testing and test case execution.",
+            "job_apply_link": "https://example.com/jobs/qa-1",
+            "job_publisher": "Remotive",
+        }]
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True), patch(
+            "main.genai.Client", return_value=client
+        ):
+            digest = main.evaluate_with_gemini(jobs)
+        self.assertIn("Gemini temporarily unavailable", digest)
+        self.assertIn("Junior QA Tester", digest)
+        self.assertIn("View Job / Apply", digest)
+        self.assertIn("https://example.com/jobs/qa-1", digest)
+
+    def test_digest_falls_back_when_gemini_key_is_missing(self):
+        jobs = [{"job_title": "QA Tester", "job_description": "Manual testing"}]
+        with patch.dict(os.environ, {}, clear=True):
+            digest = main.evaluate_with_gemini(jobs)
+        self.assertIn("Morning IT Job Digest", digest)
+        self.assertIn("QA Tester", digest)
 
     def test_gemini_input_contains_prioritized_linkedin_job(self):
         class FakeModels:
