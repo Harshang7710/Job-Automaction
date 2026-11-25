@@ -389,12 +389,8 @@ def fetch_jobs():
     return all_jobs
 
 def generate_with_fallback(client, prompt):
-    candidate_models = [
-        "gemini-3.8-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-2.0-flash"
-    ]
+    """Try current Gemini Flash models; report failures for the local fallback."""
+    candidate_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash"]
     for model_name in candidate_models:
         try:
             print(f"Trying Gemini model: {model_name}...")
@@ -404,13 +400,22 @@ def generate_with_fallback(client, prompt):
             usage = getattr(response, "usage_metadata", None)
             if usage is not None:
                 API_USAGE_STATS["gemini_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
+            if not getattr(response, "text", None) or not response.text.strip():
+                raise RuntimeError(f"{model_name} returned an empty response.")
+            print(f"Gemini succeeded with {model_name}.")
             return response
-        except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e).upper() or "QUOTA" in str(e).upper():
+        except Exception as error:
+            message = str(error)
+            upper = message.upper()
+            if "429" in message or "RESOURCE_EXHAUSTED" in upper or "QUOTA" in upper:
                 API_USAGE_STATS["gemini_quota_errors"] += 1
-            print(f"  Model {model_name} unavailable ({e}). Trying next...")
+                print(f"Gemini quota/rate limit: {message[:300]}")
+                if "RESOURCE_EXHAUSTED" in upper or "QUOTA" in upper:
+                    break
+            else:
+                print(f"Gemini model {model_name} failed: {message[:300]}")
+    raise RuntimeError("All configured Gemini models failed. Check API key, model access, quota, and workflow logs.")
 
-    raise RuntimeError("Could not find an active Gemini model for this API key.")
 
 def select_jobs_for_evaluation(raw_jobs, max_jobs=50, linkedin_limit=15):
     """Keep a fair sample and reserve slots for jobs from LinkedIn alerts."""
