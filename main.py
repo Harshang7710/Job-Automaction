@@ -76,34 +76,29 @@ Core & Emerging Skills:
 - IT, Systems & Networking: TCP/IP, OSI model, Subnetting, DNS/DHCP, Linux/Windows Server basics, Network Security (Firewalls, VPN)
 - Security Tools: Wireshark, Burp Suite (Foundational)
 
-Target Roles (consider all relevant categories):
-- Cybersecurity: SOC Analyst L1 / Tier 1, Security Operations Analyst, Junior Security Analyst, Junior GRC / Information Security Compliance / IT Risk / Security Audit Associate, Entry-level Vulnerability Management / Assessment Analyst, junior network security; red team / penetration testing only for genuine trainee, intern, graduate, or junior roles that do not require substantial prior offensive-security experience
-- QA & Testing: QA Test Engineer, Manual Tester, Software Test Engineer, Junior SDET, UAT / functional / regression tester
-- Validation & Compliance: QA IT Executive, Computer System Validation (CSV), IT Compliance, pharma / healthcare validation
-- IT & Support: Application Support, IT Support, Technical Support Engineer, Network Support Engineer
+Target Roles (evaluate all five categories fairly):
+- Cybersecurity: SOC Analyst L1 / Tier 1, Junior Security Analyst, Security Operations Analyst, Junior GRC, Information Security Compliance, IT Risk, Security Audit Associate.
+- QA & Testing: Manual Tester, QA Engineer, QA Test Engineer, Software Test Engineer, Junior SDET, UAT / Functional / Regression Tester.
+- IT Support: Application Support Engineer, Technical Support Engineer, IT Support Engineer, Helpdesk / Service Desk Support.
+- Validation & Compliance: Computer System Validation (CSV), CSV Analyst, IT Compliance, GxP / GAMP 5 validation, Pharma / Healthcare IT Validation.
+- Networking: Network Support Engineer, Junior Network Engineer, Network Operations Support, Junior Network Administrator.
 
-Target Locations: Pan-India (Vadodara, Ahmedabad, Pune, Bengaluru, Mumbai, Hyderabad, Remote) AND Global / Worldwide opportunities.
-Experience fit: Prefer 0-2 years, trainee, graduate, associate, junior, and L1 roles. Consider up to 3 years only when the role is clearly junior and requirements fit the profile. Exclude senior, lead, manager, architect, and other advanced roles, as well as roles requiring 4+ years of experience, non-technical BPO, or pure sales.
+Target Locations: Search across India and consider global / worldwide remote opportunities only when the listing explicitly confirms worldwide or India eligibility. Do not assume a generic "Remote" label means India applicants are eligible.
+Experience fit: Prefer 0-2 years, trainee, graduate, associate, junior, and L1 roles. Consider up to 3 years only when the role is clearly junior and requirements fit the profile. Exclude senior, lead, manager, architect, and other advanced roles, as well as roles requiring 4+ years, non-technical BPO, or pure sales.
 Do not claim certifications, tools, hands-on security experience, or qualifications not listed above.
 """
 
 SEARCH_QUERIES = [
-    "entry level SOC Analyst L1 Tier 1 India",
-    "junior cybersecurity analyst security operations India 0-2 years",
-    "graduate trainee security operations analyst India",
-    "junior GRC information security compliance risk analyst India",
-    "entry level information security audit associate India",
-    "junior vulnerability management analyst vulnerability assessment India",
-    "trainee junior penetration tester red team India entry level",
-    "entry level network security analyst India",
-    "QA Tester in India",
-    "Manual QA Tester junior India",
-    "Application Support Engineer entry level India",
-    "IT Support Technical Support Engineer junior India",
-    "Computer System Validation QA CSV India",
-    "Pharma IT compliance validation associate India",
-    "Network Support Engineer junior India",
-    "Junior Network Engineer India"
+    "SOC Analyst L1 Junior Security Analyst GRC India 0-2 years",
+    "Manual Tester QA Engineer Junior SDET India 0-2 years",
+    "Application Support Technical Support IT Support India entry level",
+    "Computer System Validation CSV IT Compliance GxP India junior",
+    "Network Support Junior Network Engineer India 0-2 years",
+    "remote worldwide SOC Analyst L1 Junior GRC",
+    "remote worldwide Manual Tester QA Engineer Junior SDET",
+    "remote worldwide Application Support Technical Support",
+    "remote worldwide Computer System Validation CSV IT Compliance",
+    "remote worldwide Network Support Junior Network Engineer"
 ]
 
 def extract_job_list(payload):
@@ -445,10 +440,11 @@ def evaluate_without_gemini(raw_jobs):
     """Create a conservative local digest when Gemini is unavailable."""
     scored = []
     role_groups = {
-        "QA & Testing": ["qa", "quality assurance", "software test", "manual test", "tester", "testing", "sdet", "uat"],
-        "Validation & Compliance": ["validation", "csv", "gamp", "21 cfr", "compliance", "gxp", "it audit"],
-        "IT & Application Support": ["application support", "it support", "technical support", "help desk", "service desk"],
-        "Networking & Security": ["network", "soc analyst", "cybersecurity", "cyber security", "security analyst", "information security", "vulnerability", "grc"]
+        "Cybersecurity": ["soc analyst", "security operations", "security analyst", "cybersecurity", "cyber security", "grc", "information security", "it risk"],
+        "QA & Testing": ["manual tester", "manual testing", "qa engineer", "quality assurance", "software test", "sdet", "uat tester"],
+        "IT Support": ["application support", "it support", "technical support", "helpdesk", "help desk", "service desk"],
+        "Validation & Compliance": ["computer system validation", "csv", "gamp", "21 cfr", "it compliance", "gxp", "pharma validation"],
+        "Networking": ["network support", "network engineer", "network operations", "network administrator"]
     }
     senior_terms = ("senior", "sr.", "lead", "manager", "architect", "director", "principal", "head of")
     for job in select_jobs_for_evaluation(raw_jobs):
@@ -460,7 +456,11 @@ def evaluate_without_gemini(raw_jobs):
             continue
         if re.search(r"\b(?:4|5|6|7|8|9|10)\s*\+?\s*years?\b", text):
             continue
-        matched = [group for group, terms in role_groups.items() if any(term in text for term in terms)]
+        title_text = title.lower()
+        matched = [
+            group for group, terms in role_groups.items()
+            if any(term in title_text for term in terms)
+        ]
         if not matched:
             continue
         score = 48 + min(24, sum(4 for _ in matched))
@@ -546,11 +546,11 @@ def evaluate_with_gemini(raw_jobs):
     {compact_jobs}
 
     Screening and ranking rules:
-    1. Search and recommend jobs across ALL suitable categories: cybersecurity, IT, QA/testing, application/technical support, network support, and validation/compliance (especially CSV and pharma/healthcare IT). Cybersecurity is important, but it is NOT the only target and must not automatically outrank a better-fitting IT, QA, support, or validation role. Evaluate the full range and rank by overall fit and realistic entry-level suitability.
-    2. Prefer trainee, graduate, junior, associate, and L1/Tier 1 roles, typically requiring 0-2 years. A clearly junior role asking up to 3 years may be considered if duties and requirements fit the candidate. Exclude roles requiring 4+ years or describing senior, lead, manager, architect, or advanced responsibilities.
-    3. Include red-team/penetration-testing roles only if genuinely entry-level, trainee, intern, graduate, or junior; exclude jobs requiring substantial professional offensive-security experience or skills/certifications absent from the profile.
-    4. Review the actual requirements and responsibilities, not just titles or keywords. Be honest about experience or qualification gaps; do not claim certifications, tools, or hands-on experience not listed in the candidate profile.
-    5. Select the best 5 to 10 suitable jobs across the categories. If fewer than 5 genuinely suitable jobs exist, show only those suitable results rather than padding with poor matches. Aim for a useful mix of relevant categories when the postings support it.
+    1. Evaluate all FIVE requested categories fairly: Cybersecurity (SOC L1, Junior Security Analyst, GRC); QA & Testing (Manual Tester, QA Engineer, Junior SDET); IT Support (Application Support, Technical Support); Validation (CSV, IT Compliance); Networking (Network Support, Junior Network Engineer). Do not give cybersecurity automatic priority.
+    2. Prefer 0-2 years, trainee, graduate, junior, associate, and L1 roles. Consider up to 3 years only for clearly junior roles. Exclude roles requiring 4+ years or senior, lead, manager, architect responsibilities.
+    3. Search India-wide. Include global remote jobs only if the listing explicitly confirms worldwide or India eligibility. Generic "Remote" or US/EU-only does not prove eligibility for an India-based applicant.
+    4. Check actual duties and requirements; never invent experience, qualifications, tools, or certifications.
+    5. Return only genuinely suitable roles; do not pad the list with unrelated jobs.
     6. Format the output as a clean, responsive HTML email digest using inline CSS and a modern dark navy/slate theme (#0f172a headers, #f8fafc card backgrounds, #2563eb buttons).
        For each job card include job title and company, location and work mode (highlight Remote/Global), a match score and one-sentence explanation grounded in the posting/profile, and a clickable application link. Label it "Direct Apply" only when apply_link_is_direct is true; otherwise say "View Job / Apply". Include source publisher only when supplied, a separate company-careers link only when a URL is supplied, and public HR contact only when supplied (otherwise say "Public HR contact not available").
     Use only URLs, emails, phone numbers, and publisher names explicitly present in the supplied job data. Never invent or guess career URLs, contacts, recruiter identities, or phone numbers. Do not present a job-board redirect as a direct company application link. Keep existing styling and candidate targeting.
